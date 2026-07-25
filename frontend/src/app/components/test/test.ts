@@ -22,7 +22,14 @@ export class Test {
 
     console.log('Sending dummy data:', testData);
 
-    this.testService.sendData(testData);
+    this.testService.sendData(testData).subscribe(
+      (response) => {
+        console.log('Response from the service:', response);
+      },
+      (error) => {
+        console.error('Error from the service:', error);
+      }
+    );
     
   }
 }

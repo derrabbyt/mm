@@ -1,4 +1,8 @@
+import random
+
 from fastapi import FastAPI, APIRouter
+
+from .models.test import TestDataRequest, TestDataResponse
 
 app = FastAPI(
     docs_url="/api/docs",
@@ -12,17 +16,12 @@ api = APIRouter(prefix="/api")
 async def root():
     return {"message": "Hello World"}
 
-@api.get("/health")
-async def health():
-    return {"message": "Service is running"}
+@api.post("/test")
+async def test_endpoint(data: TestDataRequest):
+    print("Received data:", data)
+    rnd = random.randint(1, 100)
+    print("Random value:", rnd)
+    return {"calculated_value": rnd, "status": "success 1234"}
 
-@api.post("/items/")
-async def create_item(item: dict):
-    print(f"Received item: {item}")
-    return {"item": item["brand"]}
-
-@api.get("/item/{item_id}")
-async def get_item(item_id: int):
-    return {"should get item for id: ": item_id}
 
 app.include_router(api)
