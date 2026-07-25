@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { TestService } from '../../services/test.service';
-import { TestDataRequest } from '../../models/test-model';
+import { TestDataRequest } from '../../open-api/model/test-data-request';
 
 @Component({
   selector: 'app-test',

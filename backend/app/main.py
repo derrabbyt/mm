@@ -10,13 +10,15 @@ app = FastAPI(
     redoc_url="/api/redoc",
 )
 
-api = APIRouter(prefix="/api")
+api = APIRouter(prefix="/api",
+                tags=["main_test_api"])
 
 @api.get("/")
 async def root():
     return {"message": "Hello World"}
 
-@api.post("/test")
+@api.post("/test",
+          operation_id="testEndpoint")
 
 async def test_endpoint(data: TestDataRequest)-> TestDataResponse:
     print("Received data:", data)

@@ -7,7 +7,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "lint": "ng lint"
+    "lint": "ng lint",
+    "api:generate": "openapi-generator-cli generate -i \"http://localhost:8000/api/openapi.json\" -g typescript-angular -o src/app/open-api --additional-properties=useSingleRequestParameter=true,fileNaming=kebab-case"
   },
   "private": true,
   "packageManager": "npm@11.9.0",
@@ -26,6 +27,7 @@
     "@angular/cli": "^21.2.19",
     "@angular/compiler-cli": "^21.2.0",
     "@eslint/js": "^10.0.1",
+    "@openapitools/openapi-generator-cli": "^2.40.1",
     "@tailwindcss/postcss": "^4.1.12",
     "angular-eslint": "21.4.0",
     "eslint": "^10.3.0",
