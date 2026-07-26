@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "fastapi-redis-sdk>=0.7.0",
     "fastapi[standard]>=0.140.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",

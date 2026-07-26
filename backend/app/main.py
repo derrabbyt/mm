@@ -61,4 +61,10 @@ async def sse_endpoint() -> AsyncIterable[Item]:
 async def get_item() -> Item:
     return Item(name="Example Item", description="This is an example item.")
 
+
+@app.on_event('startup')
+async def startup_event():
+    keys = Keys()
+    await initialize_redis(keys)
+
 app.include_router(api)

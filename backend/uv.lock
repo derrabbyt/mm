@@ -64,6 +64,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi", extra = ["standard"] },
+    { name = "fastapi-redis-sdk" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "r5py" },
@@ -73,6 +74,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", extras = ["standard"], specifier = ">=0.140.0" },
+    { name = "fastapi-redis-sdk", specifier = ">=0.7.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "r5py", specifier = ">=1.1.7" },
@@ -276,6 +278,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/25/f2/36bfe990baa656de89a2b98a77a15dcd018474f7245c8e4a10cada0553c5/fastapi_cloud_cli-0.22.2.tar.gz", hash = "sha256:7ec78c1fed58f578af5eb1fb54ec4b456eba4dc1eaca1c3a93cf499a7cbc7ab3", size = 94480, upload-time = "2026-07-14T09:27:01.349Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ae/25/e01631a63a5213fc783e5b84e8a27eca800f21549aa414644a0a29181045/fastapi_cloud_cli-0.22.2-py3-none-any.whl", hash = "sha256:37c6b05adb94a4c9f59916a559d041c565db36b5f3dddeed420bf0a51182c363", size = 77744, upload-time = "2026-07-14T09:27:02.571Z" },
+]
+
+[[package]]
+name = "fastapi-redis-sdk"
+version = "0.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastapi", extra = ["standard"] },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "redis" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/90/35/22064b1b7a3160a64e17498b823af3cae86f4e35c20274e719367861ccef/fastapi_redis_sdk-0.7.0.tar.gz", hash = "sha256:01bd948430dc97a1f4a3674fcbbf8316ce8856d1ee4dbc1fe669c7decca98084", size = 23187, upload-time = "2026-06-22T12:55:03.662Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3b/24/2c8c44ed7822090378295e03f9bd05f56c330ac29c847b4d38ea8be1c30e/fastapi_redis_sdk-0.7.0-py3-none-any.whl", hash = "sha256:07a685664900ddb72882d351ebc6b712d4aa9ba42b131e2010f47cc48785f4a1", size = 26662, upload-time = "2026-06-22T12:55:02.376Z" },
 ]
 
 [[package]]
@@ -1020,6 +1037,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/f2/8f706083c6c163054d12c7ed6d5ac4e4ed02252b761288d74e6158871b34/rasterio-1.5.0-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:b9fd87a0b63ab5c6267dfb0bc96f54fdf49d000651b9ee85ed37798141cff046", size = 37714599, upload-time = "2026-01-05T16:06:38.818Z" },
     { url = "https://files.pythonhosted.org/packages/a6/d5/bbca726d5fea5864f7e4bcf3ee893095369e93ad51120495e8c40e2aa1a0/rasterio-1.5.0-cp314-cp314t-win_amd64.whl", hash = "sha256:f459db8953ba30ca04fcef2b5e1260eeeff0eae8158bd9c3d6adbe56289765cc", size = 31233931, upload-time = "2026-01-05T16:06:42.208Z" },
     { url = "https://files.pythonhosted.org/packages/6e/d1/8b017856e63ccaff3cbd0e82490dbb01363a42f3a462a41b1d8a391e1443/rasterio-1.5.0-cp314-cp314t-win_arm64.whl", hash = "sha256:f4b9c2c3b5f10469eb9588f105086e68f0279e62cc9095c4edd245e3f9b88c8a", size = 29418321, upload-time = "2026-01-05T16:06:44.758Z" },
+]
+
+[[package]]
+name = "redis"
+version = "7.2.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/b3/fddae1baaf88100f0bd52e726d9dd140997f513258d22429b0da1d889170/redis-7.2.2.tar.gz", hash = "sha256:91125c133362620d9f2caec11c70e6febc2745bbb8a0ce15ad8542811bd2dfd1", size = 4909057, upload-time = "2026-06-05T08:26:46.931Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f6/f4/062f77785c590d62a323e92ba9d179ce80286c4f31369f799612d5d1d0f2/redis-7.2.2-py3-none-any.whl", hash = "sha256:8bd20727048c01a1fb4741f98c4194f5aa64781b7dd28386ca74ce6b41e42dcf", size = 396377, upload-time = "2026-06-05T08:26:45.186Z" },
 ]
 
 [[package]]
