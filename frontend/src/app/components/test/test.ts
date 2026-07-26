@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { TestService } from '../../services/test.service';
 import { TestDataRequest } from '../../open-api/model/test-data-request';
+import { SSEService } from '../../services/sse.service';
 
 @Component({
   selector: 'app-test',
@@ -11,6 +12,7 @@ import { TestDataRequest } from '../../open-api/model/test-data-request';
 export class Test {
 
   private testService = inject(TestService);
+  private sseService = inject(SSEService);
 
   sendDummyData() {
 
@@ -32,4 +34,15 @@ export class Test {
     );
     
   }
+
+  eventStuff() {
+    this.sseService.streamItems().subscribe(
+      (item) => {
+        console.log('Received item from SSE:', item);
+      },
+      (error) => {
+        console.error('Error from SSE:', error);
+      }
+    );
+  }     
 }

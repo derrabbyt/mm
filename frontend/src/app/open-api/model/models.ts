@@ -1,4 +1,5 @@
 export * from './http-validation-error';
+export * from './item';
 export * from './location-inner';
 export * from './test-data-request';
 export * from './test-data-response';

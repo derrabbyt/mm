@@ -9,6 +9,7 @@ encoder.ts
 git_push.sh
 index.ts
 model/http-validation-error.ts
+model/item.ts
 model/location-inner.ts
 model/models.ts
 model/test-data-request.ts
