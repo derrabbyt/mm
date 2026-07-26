@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import {MapComponent} from '@maplibre/ngx-maplibre-gl';
+import {NgxMapLibreGLModule} from '@maplibre/ngx-maplibre-gl';
 
 @Component({
   selector: 'app-map',
   standalone: true,
-  imports: [MapComponent],
+  imports: [NgxMapLibreGLModule],
   templateUrl: './map.html',
   styleUrl: './map.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
