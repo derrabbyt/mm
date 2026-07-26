@@ -1,5 +1,35 @@
+<button (click)="start()">Display random Points</button>
+
+@if (clickedCoords(); as coords) {
+  <p class="coords">
+    Clicked: {{ coords[0] | number: '1.5-5' }}, {{ coords[1] | number: '1.5-5' }}
+  </p>
+} @else {
+  <p class="coords">Click the map to place a marker.</p>
+}
+
 <mgl-map
   [mapStyle]="mapStyle"
   [center]="center"
   [zoom]="zoom"
-/>
+  cursorStyle="crosshair"
+  (mapClick)="onMapClick($event)"
+>
+  <mgl-geojson-source id="random-points" [data]="points()" />
+
+  <mgl-layer
+    id="random-points-layer"
+    type="circle"
+    source="random-points"
+    [paint]="{
+      'circle-radius': 6,
+      'circle-color': '#e5484d',
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': '#ffffff'
+    }"
+  />
+
+  @if (clickedCoords(); as coords) {
+    <mgl-marker [lngLat]="coords" color="#0090ff" />
+  }
+</mgl-map>
