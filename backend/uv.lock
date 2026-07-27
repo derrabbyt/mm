@@ -68,6 +68,8 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "r5py" },
+    { name = "redis" },
+    { name = "rq" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -78,6 +80,8 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "r5py", specifier = ">=1.1.7" },
+    { name = "redis", specifier = ">=7.2.2" },
+    { name = "rq", specifier = ">=2.10.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.51.0" },
 ]
 
@@ -178,6 +182,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3f/0b/30328302903c55218ffc5199646d0e9d28348ff26c02ba77b2ffc58d294a/configargparse-1.7.5.tar.gz", hash = "sha256:e3f9a7bb6be34d66b2e3c4a2f58e3045f8dfae47b0dc039f87bcfaa0f193fb0f", size = 53548, upload-time = "2026-03-11T02:19:38.144Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fe/19/3ba5e1b0bcc7b91aeab6c258afd70e4907d220fed3972febe38feb40db30/configargparse-1.7.5-py3-none-any.whl", hash = "sha256:1e63fdffedf94da9cd435fc13a1cd24777e76879dd2343912c1f871d4ac8c592", size = 27692, upload-time = "2026-03-11T02:19:36.442Z" },
+]
+
+[[package]]
+name = "croniter"
+version = "6.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/37/57/2e2a65aee2a70483cb28e2b7e15a072d00a523207593b44400d4717bb100/croniter-6.2.4.tar.gz", hash = "sha256:fc124f751b1b04805c2a04b061898b436b45ab2320b045e1e052ea895de65189", size = 166267, upload-time = "2026-07-10T09:52:59.955Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cd/ba/d678e5bd329646ca51d3c92addbc77804e86d21f4b6b6a027218e6abb010/croniter-6.2.4-py3-none-any.whl", hash = "sha256:8ef3d544107a5c05a150a2d78f8bf5a8eb9c5c4d93405a736b824109574e3f4d", size = 46677, upload-time = "2026-07-10T09:52:58.425Z" },
 ]
 
 [[package]]
@@ -1144,6 +1160,20 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/69/ae/00a872a463b38c3d693acd096133fa693f68597879e943f78b98274ba2d4/rignore-0.8.0-cp314-cp314t-win32.whl", hash = "sha256:f48bd7d720d96078411a7fd905d0e20fc41bb15e24cfa9d5914c6fa5b25c48f0", size = 638522, upload-time = "2026-07-17T19:00:01.154Z" },
     { url = "https://files.pythonhosted.org/packages/ff/22/fd0e37ba32fc70573501a0d0196faf3a91ebc066514d133399cd85d9cd7c/rignore-0.8.0-cp314-cp314t-win_amd64.whl", hash = "sha256:738613a5d9451df01810884059fae605047188e7cdcea79eb4b0f03d866348bd", size = 729624, upload-time = "2026-07-17T19:00:03.188Z" },
     { url = "https://files.pythonhosted.org/packages/3a/e5/b99c0384bc72d6bc37db31158cab7a1ef068c8c3fc9080d4ca0e1c949308/rignore-0.8.0-cp314-cp314t-win_arm64.whl", hash = "sha256:caf1c51c60791cd9d6df46c2f82eed1634e1bf7859d116e36d56b9e69b1e9a71", size = 664583, upload-time = "2026-07-17T19:00:04.71Z" },
+]
+
+[[package]]
+name = "rq"
+version = "2.10.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "croniter" },
+    { name = "redis" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cc/a8/7bf65cda593feb5888214a4d1e64aae6fc5eb0bbbb74df922c916099a3e5/rq-2.10.0.tar.gz", hash = "sha256:2d8c533dd27500fedabec06295f18db595966e4f22744e6988fe31155b8f7a21", size = 754610, upload-time = "2026-06-20T03:11:45.919Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c5/d3/f8c59750a1c98f99d225954eb2c3dd89f2d66b666c448b4b0dff79ab29ed/rq-2.10.0-py3-none-any.whl", hash = "sha256:1f072e0ff79771f3d3a810170df4c4836dca9ce9f31330a9fc25e25277620ec8", size = 124665, upload-time = "2026-06-20T03:11:47.524Z" },
 ]
 
 [[package]]

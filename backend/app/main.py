@@ -6,6 +6,7 @@ from fastapi import FastAPI, APIRouter
 from fastapi.params import Depends
 from fastapi.sse import EventSourceResponse
 from fastapi.middleware.cors import CORSMiddleware
+from redis import Redis
 from redis_fastapi import FastAPIRedis, cache
 
 from .config import settings
@@ -78,6 +79,42 @@ async def expensive(item_id: int):
     return {
         "item_id": item_id,
         "value": random.randint(1, 1000),
+    }
+
+
+# rq
+from .jobs import expensive_job
+from rq import Queue
+from rq.job import Job
+
+queue = Queue(
+    "default",
+    connection= settings.redis, # we can use the redis connection from settings here, sdk doesnt provide it like that i guess
+)
+
+@app.post("/api/jobs/{item_id}")
+async def create_job(item_id: int):
+    job = queue.enqueue(
+        expensive_job,
+        item_id,
+    )
+
+    return {
+        "job_id": job.id,
+        "status": job.get_status(),
+    }
+
+@app.get("/api/jobs/{job_id}")
+async def get_job(job_id: str):
+    job = Job.fetch(
+        job_id,
+        connection=settings.redis,
+    )
+
+    return {
+        "job_id": job.id,
+        "status": job.get_status(),
+        "result": job.return_value(),
     }
 
 app.include_router(api)

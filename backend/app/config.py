@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from redis import Redis
 
 
 class Settings(BaseSettings):
@@ -9,6 +10,6 @@ class Settings(BaseSettings):
     # requests are same-origin and CORS is not exercised. This matters when the
     # frontend talks to this app directly (e.g. a deployed frontend on another host).
     cors_allow_origins: list[str] = ["http://localhost:4200"]
-
+    redis: Redis = Redis(host="localhost", port=6379, db=0)
 
 settings = Settings()
