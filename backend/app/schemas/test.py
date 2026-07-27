@@ -8,3 +8,7 @@ class TestDataRequest(BaseModel):
 class TestDataResponse(BaseModel):
     calculated_value: float
     status: str
+
+class Item(BaseModel):
+    name: str
+    description: str | None

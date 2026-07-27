@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     # requests are same-origin and CORS is not exercised. This matters when the
     # frontend talks to this app directly (e.g. a deployed frontend on another host).
     cors_allow_origins: list[str] = ["http://localhost:4200"]
+    # unified redis connection, not used by the sdk
     redis: Redis = Redis(host="localhost", port=6379, db=0)
 
 settings = Settings()
