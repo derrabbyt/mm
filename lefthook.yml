@@ -1,0 +1,22 @@
+lefthook: |
+  cd frontend
+  npm exec -- lefthook
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: backend-ruff
+      root: backend/
+      glob:
+        - "*.py"
+        - "**/*.py"
+      run: uv run ruff check {staged_files}
+
+    - name: frontend-ng-lint
+      root: frontend/
+      glob:
+        - "*.ts"
+        - "**/*.ts"
+        - "*.html"
+        - "**/*.html"
+      run: npm run lint
