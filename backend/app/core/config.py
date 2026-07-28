@@ -13,4 +13,5 @@ class Settings(BaseSettings):
     # unified redis connection, not used by the sdk
     redis: Redis = Redis(host="localhost", port=6379, db=0)
 
+
 settings = Settings()

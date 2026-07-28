@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis_fastapi import FastAPIRedis
 
 from .core.config import settings
+from .routers.meetup import router as meetup_router
 from .routers.test import router as test_router
 
 app = FastAPI(
@@ -23,3 +24,4 @@ app.add_middleware(
 FastAPIRedis(app).lifespan().caching()
 
 app.include_router(test_router)
+app.include_router(meetup_router)
