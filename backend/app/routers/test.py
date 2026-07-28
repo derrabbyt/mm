@@ -1,6 +1,6 @@
 import asyncio
 import random
-from typing import AsyncIterable
+from collections.abc import AsyncIterable
 
 from fastapi import APIRouter, Depends
 from fastapi.sse import EventSourceResponse
@@ -30,15 +30,22 @@ queue = Queue(
 async def get_item() -> Item:
     return Item(name="Example Item", description="This is an example item.")
 
+
 @router.post("/test", operation_id="testEndpoint")
-async def test_endpoint(data: TestDataRequest)-> TestDataResponse:
+async def test_endpoint(data: TestDataRequest) -> TestDataResponse:
     print("Received data:", data)
     rnd = random.randint(1, 100)
     print("Random value:", rnd)
     return {"calculated_value": rnd, "status": "success 1234"}
 
+
 # sse
-@router.get("/sse", operation_id="sseEndpoint", include_in_schema=False, response_class=EventSourceResponse)
+@router.get(
+    "/sse",
+    operation_id="sseEndpoint",
+    include_in_schema=False,
+    response_class=EventSourceResponse,
+)
 async def sse_endpoint() -> AsyncIterable[Item]:
     items = [
         Item(name="Plumbus", description="A multi-purpose household device."),
@@ -52,12 +59,7 @@ async def sse_endpoint() -> AsyncIterable[Item]:
 
 
 # redis chaching
-@router.get(
-    "/expensive/{item_id}",
-    dependencies=[
-        Depends(cache(ttl=30))
-    ]
-)
+@router.get("/expensive/{item_id}", dependencies=[Depends(cache(ttl=30))])
 async def expensive(item_id: int):
     print(f"Actually executing endpoint for {item_id}")
 
@@ -82,6 +84,7 @@ async def create_job(item_id: int):
         "job_id": job.id,
         "status": job.get_status(),
     }
+
 
 @router.get("/jobs/{job_id}")
 async def get_job(job_id: str):
