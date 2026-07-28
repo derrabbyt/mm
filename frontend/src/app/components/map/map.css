@@ -7,8 +7,3 @@ mgl-map {
   width: 100%;
   height: 500px;
 }
-
-.coords {
-  margin: 0.5rem 0;
-  font-family: monospace;
-}
