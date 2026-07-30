@@ -1,8 +1,11 @@
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 
 def expensive_job(item_id: int) -> dict:
-    print(f"Worker started job for {item_id}")
+    logger.debug("Worker started job for %s", item_id)
 
     # Simulate expensive work.
     time.sleep(8)
@@ -12,6 +15,6 @@ def expensive_job(item_id: int) -> dict:
         "value": item_id * 10,
     }
 
-    print(f"Worker finished job for {item_id}")
+    logger.debug("Worker finished job for %s", item_id)
 
     return result

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import random
 from collections.abc import AsyncIterable
 
@@ -12,6 +13,8 @@ from ..core.config import settings
 from ..core.exceptions import default_responses
 from ..schemas.test import Item, TestDataRequest, TestDataResponse
 from ..services.jobs import expensive_job
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api",
@@ -38,9 +41,9 @@ async def get_item() -> Item:
 
 @router.post("/test", operation_id="testEndpoint")
 async def test_endpoint(data: TestDataRequest) -> TestDataResponse:
-    print("Received data:", data)
+    logger.debug("Received data: %s", data)
     rnd = random.randint(1, 100)
-    print("Random value:", rnd)
+    logger.debug("Random value: %s", rnd)
     return {"calculated_value": rnd, "status": "success 1234"}
 
 
@@ -66,7 +69,7 @@ async def sse_endpoint() -> AsyncIterable[Item]:
 # redis chaching
 @router.get("/expensive/{item_id}", dependencies=[Depends(cache(ttl=30))])
 async def expensive(item_id: int):
-    print(f"Actually executing endpoint for {item_id}")
+    logger.debug("Actually executing endpoint for %s", item_id)
 
     # Pretend this is an expensive DB/API call.
     await asyncio.sleep(2)

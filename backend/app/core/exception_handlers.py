@@ -1,5 +1,4 @@
 import logging
-import traceback
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -40,12 +39,14 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def app_exc_handler(request: Request, exc: AppBaseException) -> JSONResponse:
         if exc.status >= 500:
             logger.error(
-                "%s on %s %s:\n%s",
+                "%s on %s %s",
                 exc.code,
                 request.method,
                 request.url.path,
-                "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                exc_info=exc,
             )
+        else:
+            logger.warning("%s on %s %s", exc.code, request.method, request.url.path)
         return _envelope(exc.status, exc.code, exc.message)
 
     @app.exception_handler(RequestValidationError)
@@ -62,6 +63,13 @@ def register_exception_handlers(app: FastAPI) -> None:
                 for item in exc.errors()
             ]
         )
+        logger.warning(
+            "%s on %s %s: %s",
+            error.code,
+            request.method,
+            request.url.path,
+            "; ".join(f"{'.'.join(d.location)}: {d.message}" for d in error.details),
+        )
         return _envelope(error.status, error.code, error.message, error.details)
 
     @app.exception_handler(StarletteHTTPException)
@@ -74,10 +82,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def catch_all_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.error(
-            "UnhandledException on %s %s:\n%s",
+            "UnhandledException on %s %s",
             request.method,
             request.url.path,
-            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+            exc_info=exc,
         )
         error = InternalServerError()
         return _envelope(error.status, error.code, error.message)
