@@ -19,11 +19,27 @@ import { OpenApiHttpParams, QueryParamStyle } from '../query.params';
 // @ts-ignore
 import { AddMeetupMemberRequest } from '../model/add-meetup-member-request';
 // @ts-ignore
-import { HTTPValidationError } from '../model/http-validation-error';
+import { InternalServerError } from '../model/internal-server-error';
 // @ts-ignore
 import { MeetupMember } from '../model/meetup-member';
 // @ts-ignore
+import { MemberCreateError } from '../model/member-create-error';
+// @ts-ignore
+import { MemberLoadError } from '../model/member-load-error';
+// @ts-ignore
+import { MemberNotFoundError } from '../model/member-not-found-error';
+// @ts-ignore
+import { MembersLoadError } from '../model/members-load-error';
+// @ts-ignore
+import { MethodNotAllowedError } from '../model/method-not-allowed-error';
+// @ts-ignore
+import { Response503Updatemember } from '../model/response503-updatemember';
+// @ts-ignore
+import { RouteNotFoundError } from '../model/route-not-found-error';
+// @ts-ignore
 import { UpdateMeetupMemberRequest } from '../model/update-meetup-member-request';
+// @ts-ignore
+import { ValidationError } from '../model/validation-error';
 
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS }                     from '../variables';

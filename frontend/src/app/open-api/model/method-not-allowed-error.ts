@@ -7,17 +7,15 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { FieldError } from './field-error';
 
 
-export interface ValidationError { 
-    error: ValidationError.ErrorEnum;
+export interface MethodNotAllowedError { 
+    error: MethodNotAllowedError.ErrorEnum;
     message: string;
-    details: Array<FieldError>;
 }
-export namespace ValidationError {
+export namespace MethodNotAllowedError {
     export const ErrorEnum = {
-        ValidationError: 'validation_error'
+        Http405: 'http_405'
     } as const;
     export type ErrorEnum = typeof ErrorEnum[keyof typeof ErrorEnum];
 }

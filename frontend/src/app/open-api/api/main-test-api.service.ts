@@ -17,13 +17,19 @@ import { Observable }                                        from 'rxjs';
 import { OpenApiHttpParams, QueryParamStyle } from '../query.params';
 
 // @ts-ignore
-import { HTTPValidationError } from '../model/http-validation-error';
+import { InternalServerError } from '../model/internal-server-error';
 // @ts-ignore
 import { Item } from '../model/item';
+// @ts-ignore
+import { MethodNotAllowedError } from '../model/method-not-allowed-error';
+// @ts-ignore
+import { RouteNotFoundError } from '../model/route-not-found-error';
 // @ts-ignore
 import { TestDataRequest } from '../model/test-data-request';
 // @ts-ignore
 import { TestDataResponse } from '../model/test-data-response';
+// @ts-ignore
+import { ValidationError } from '../model/validation-error';
 
 // @ts-ignore
 import { BASE_PATH, COLLECTION_FORMATS }                     from '../variables';

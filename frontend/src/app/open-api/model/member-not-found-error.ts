@@ -7,17 +7,15 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { FieldError } from './field-error';
 
 
-export interface ValidationError { 
-    error: ValidationError.ErrorEnum;
+export interface MemberNotFoundError { 
+    error: MemberNotFoundError.ErrorEnum;
     message: string;
-    details: Array<FieldError>;
 }
-export namespace ValidationError {
+export namespace MemberNotFoundError {
     export const ErrorEnum = {
-        ValidationError: 'validation_error'
+        MemberNotFound: 'member_not_found'
     } as const;
     export type ErrorEnum = typeof ErrorEnum[keyof typeof ErrorEnum];
 }

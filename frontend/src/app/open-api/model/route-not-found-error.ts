@@ -7,17 +7,15 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
-import { FieldError } from './field-error';
 
 
-export interface ValidationError { 
-    error: ValidationError.ErrorEnum;
+export interface RouteNotFoundError { 
+    error: RouteNotFoundError.ErrorEnum;
     message: string;
-    details: Array<FieldError>;
 }
-export namespace ValidationError {
+export namespace RouteNotFoundError {
     export const ErrorEnum = {
-        ValidationError: 'validation_error'
+        Http404: 'http_404'
     } as const;
     export type ErrorEnum = typeof ErrorEnum[keyof typeof ErrorEnum];
 }
