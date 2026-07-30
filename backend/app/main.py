@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from redis_fastapi import FastAPIRedis
 
 from .core.config import settings
+from .core.exception_handlers import register_exception_handlers
 from .routers.meetup import router as meetup_router
 from .routers.test import router as test_router
 
@@ -25,3 +26,4 @@ FastAPIRedis(app).lifespan().caching()
 
 app.include_router(test_router)
 app.include_router(meetup_router)
+register_exception_handlers(app)

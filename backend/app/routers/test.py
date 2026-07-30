@@ -9,10 +9,15 @@ from rq import Queue
 from rq.job import Job
 
 from ..core.config import settings
+from ..core.exceptions import default_responses
 from ..schemas.test import Item, TestDataRequest, TestDataResponse
 from ..services.jobs import expensive_job
 
-router = APIRouter(prefix="/api", tags=["main_test_api"])
+router = APIRouter(
+    prefix="/api",
+    tags=["main_test_api"],
+    responses=default_responses(),
+)
 
 queue = Queue(
     "default",
