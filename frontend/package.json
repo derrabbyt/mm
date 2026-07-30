@@ -8,6 +8,7 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "lint": "ng lint",
+    "lint:fix": "ng lint --fix",
     "api:generate": "openapi-generator-cli generate -i \"http://localhost:8000/api/openapi.json\" -g typescript-angular -o src/app/open-api --additional-properties=useSingleRequestParameter=true,fileNaming=kebab-case"
   },
   "private": true,
