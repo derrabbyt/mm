@@ -1,5 +1,4 @@
 import { inject, Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { MainTestApiService, TestDataResponse} from '../open-api';
 import { TestDataRequest } from '../open-api/model/test-data-request'; //why the fuck do i have to do this here????
