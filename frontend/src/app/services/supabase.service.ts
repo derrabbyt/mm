@@ -2,6 +2,8 @@ import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { environment } from '../../environments/environment';
 
+export type OAuthProvider = 'google' | 'github';
+
 @Injectable({
   providedIn: 'root',
 })
@@ -11,14 +13,9 @@ export class SupabaseService {
     environment.supabaseKey,
   );
 
-  /**
-   * Redirects the browser to Google. On the way back the client picks the
-   * session out of the URL itself (implicit flow, detectSessionInUrl), so
-   * there is no callback route to handle.
-   */
-  async signInWithGoogle() {
+  async signInWith(provider: OAuthProvider) {
     return await this.supabase.auth.signInWithOAuth({
-      provider: 'google',
+      provider,
       options: { redirectTo: `${window.location.origin}/auth` },
     });
   }

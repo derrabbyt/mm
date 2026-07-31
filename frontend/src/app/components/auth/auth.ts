@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { SupabaseService } from '../../services/supabase.service';
+import { OAuthProvider, SupabaseService } from '../../services/supabase.service';
 import { User } from '../../types/user.type';
 
 @Component({
@@ -12,22 +12,20 @@ export class Auth implements OnInit {
 
   readonly user = signal<User | null>(null);
   readonly error = signal('');
-  readonly loading = signal(false);
+  readonly pending = signal<OAuthProvider | null>(null);
 
   ngOnInit() {
     void this.loadUser();
   }
 
-  async signInWithGoogle() {
+  async signIn(provider: OAuthProvider) {
     this.error.set('');
-    this.loading.set(true);
+    this.pending.set(provider);
 
-    const { error } = await this.supabase.signInWithGoogle();
-    // On success the browser is already navigating to Google, so only the
-    // failure path has anything left to do here.
+    const { error } = await this.supabase.signInWith(provider);
     if (error) {
       this.error.set(error.message);
-      this.loading.set(false);
+      this.pending.set(null);
     }
   }
 
