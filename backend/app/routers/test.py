@@ -9,8 +9,8 @@ from redis_fastapi import cache
 from rq import Queue
 from rq.job import Job
 
-from ..core.config import settings
 from ..core.exceptions import default_responses
+from ..core.redis import get_redis
 from ..schemas.test import Item, TestDataRequest, TestDataResponse
 from ..services.jobs import expensive_job
 
@@ -22,10 +22,7 @@ router = APIRouter(
     responses=default_responses(),
 )
 
-queue = Queue(
-    "default",
-    connection=settings.redis,  # we can use the redis connection from settings here, sdk doesnt provide it like that i guess
-)
+queue = Queue("default", connection=get_redis())
 
 
 # for open api generator to create a model of Item, it needs to be
@@ -98,7 +95,7 @@ async def create_job(item_id: int):
 async def get_job(job_id: str):
     job = Job.fetch(
         job_id,
-        connection=settings.redis,
+        connection=get_redis(),
     )
 
     return {
