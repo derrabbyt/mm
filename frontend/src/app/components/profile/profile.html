@@ -1,0 +1,18 @@
+ <h2 class="mb-4 text-xl font-semibold">Signed in</h2>
+
+    @if (account()?.avatar_url; as avatar) {
+      <img [src]="avatar" alt="" class="mb-4 size-16 rounded-full" />
+    }
+
+    <dl class="mb-5 text-sm">
+      <dt class="font-medium">Name</dt>
+      <dd class="mb-2 text-gray-600">
+        {{ account()?.display_name ?? '—' }}
+      </dd>
+      <dt class="font-medium">Email</dt>
+      <dd class="mb-2 text-gray-600">{{ account()?.email ?? '—' }}</dd>
+      <dt class="font-medium">Account ID</dt>
+      <dd class="break-all text-gray-600">{{ account()?.id ?? '—' }}</dd>
+    </dl>
+
+    
