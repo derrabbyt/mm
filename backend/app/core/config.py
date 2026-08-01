@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     database_url: str = ""
     redis_url: str = ""
 
+    supabase_url: str
+    supabase_jwt_audience: str = "authenticated"
+
+    @property
+    def supabase_issuer(self) -> str:
+        return f"{self.supabase_url.rstrip('/')}/auth/v1"
+
+    @property
+    def supabase_jwks_url(self) -> str:
+        return f"{self.supabase_issuer}/.well-known/jwks.json"
+
     @model_validator(mode="after")
     def _assemble_redis_url(self) -> Self:
         if not self.redis_url:

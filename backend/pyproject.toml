@@ -11,6 +11,7 @@ dependencies = [
     "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
+    "pyjwt[crypto]>=2.13.0",
     "r5py>=1.1.7",
     "redis>=7.2.2",
     "rq>=2.10.0",

@@ -78,6 +78,30 @@ class InternalServerError(AppBaseException):
         super().__init__("Something went wrong. Please try again later.")
 
 
+class MissingBearerTokenError(AppBaseException):
+    code = "missing_bearer_token"
+    status = 401
+
+    def __init__(self):
+        super().__init__("Missing bearer token")
+
+
+class InvalidBearerTokenError(AppBaseException):
+    code = "invalid_bearer_token"
+    status = 401
+
+    def __init__(self):
+        super().__init__("Invalid or expired access token")
+
+
+class UnauthenticatedRoleError(AppBaseException):
+    code = "unauthenticated_role"
+    status = 403
+
+    def __init__(self):
+        super().__init__("Authenticated account required")
+
+
 class MemberNotFoundError(AppBaseException):
     code = "member_not_found"
     status = 404
@@ -116,6 +140,14 @@ class MemberCreateError(AppBaseException):
 
     def __init__(self):
         super().__init__("Member could not be created")
+
+
+class AccountUpsertError(AppBaseException):
+    code = "account_upsert_error"
+    status = 503
+
+    def __init__(self):
+        super().__init__("Account could not be loaded or created")
 
 
 def default_responses() -> dict[int | str, dict[str, Any]]:
