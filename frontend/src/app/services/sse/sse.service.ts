@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Item } from '../open-api/model/item';
-import { BASE_PATH } from '../open-api';
+import { Item } from '../../open-api/model/item';
+import { BASE_PATH } from '../../open-api';
 
 @Injectable({
   providedIn: 'root',

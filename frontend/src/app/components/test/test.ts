@@ -1,7 +1,7 @@
 import { Component, inject } from '@angular/core';
-import { TestService } from '../../services/test.service';
+import { TestService } from '../../services/test/test.service';
 import { TestDataRequest } from '../../open-api/model/test-data-request';
-import { SSEService } from '../../services/sse.service';
+import { SSEService } from '../../services/sse/sse.service';
 
 @Component({
   selector: 'app-test',
