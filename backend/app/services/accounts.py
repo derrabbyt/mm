@@ -1,6 +1,6 @@
 from typing import Annotated, Any
 
-from fastapi import Depends
+from fastapi import Depends, logger
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -69,7 +69,10 @@ def get_or_create_account(db: Session, identity: SupabaseIdentity) -> Account:
         account = db.execute(statement).scalar_one()
         db.commit()
     except SQLAlchemyError as exc:
-        db.rollback()
+        try:
+            db.rollback()
+        except SQLAlchemyError:
+            logger.exception("Failed to roll back after account upsert error")
         raise AccountUpsertError() from exc
 
     return account

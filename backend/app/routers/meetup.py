@@ -1,5 +1,4 @@
 from fastapi import APIRouter
-from redis_fastapi import AsyncRedisDep
 
 from ..core.exceptions import (
     MemberCreateError,
@@ -10,6 +9,7 @@ from ..core.exceptions import (
     default_responses,
     responses,
 )
+from ..db.session import DbSessionDep
 from ..schemas.member import (
     AddMeetupMemberRequest,
     MeetupMember,
@@ -29,8 +29,8 @@ router = APIRouter(
     operation_id="getMembers",
     responses=responses(MembersLoadError),
 )
-async def get_members(redis: AsyncRedisDep) -> list[MeetupMember]:
-    return await members.get_members(redis)
+def get_members(db: DbSessionDep) -> list[MeetupMember]:
+    return members.get_members(db)
 
 
 @router.get(
@@ -38,8 +38,8 @@ async def get_members(redis: AsyncRedisDep) -> list[MeetupMember]:
     operation_id="getMember",
     responses=responses(MemberNotFoundError, MemberLoadError),
 )
-async def get_member(member_id: str, redis: AsyncRedisDep) -> MeetupMember:
-    return await members.get_member(redis, member_id)
+def get_member(member_id: str, db: DbSessionDep) -> MeetupMember:
+    return members.get_member(db, member_id)
 
 
 @router.post(
@@ -47,10 +47,8 @@ async def get_member(member_id: str, redis: AsyncRedisDep) -> MeetupMember:
     operation_id="addMember",
     responses=responses(MemberCreateError),
 )
-async def add_member(
-    data: AddMeetupMemberRequest, redis: AsyncRedisDep
-) -> MeetupMember:
-    return await members.add_member(redis, data)
+def add_member(data: AddMeetupMemberRequest, db: DbSessionDep) -> MeetupMember:
+    return members.add_member(db, data)
 
 
 @router.put(
@@ -58,7 +56,7 @@ async def add_member(
     operation_id="updateMember",
     responses=responses(MemberNotFoundError, MemberLoadError, MemberUpdateError),
 )
-async def update_member(
-    member_id: str, data: UpdateMeetupMemberRequest, redis: AsyncRedisDep
+def update_member(
+    member_id: str, data: UpdateMeetupMemberRequest, db: DbSessionDep
 ) -> MeetupMember:
-    return await members.update_member(redis, member_id, data)
+    return members.update_member(db, member_id, data)

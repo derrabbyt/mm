@@ -1,6 +1,8 @@
-import pytest
+import uuid
 
-from app.cache import people as members_cache
+import pytest
+from sqlalchemy.exc import OperationalError
+
 from app.core.exceptions import (
     AppBaseException,
     MemberCreateError,
@@ -10,7 +12,8 @@ from app.core.exceptions import (
     MemberUpdateError,
     responses,
 )
-from app.schemas.member import MeetupMember, UpdateMeetupMemberRequest
+from app.models.member import Member
+from app.schemas.member import AddMeetupMemberRequest, UpdateMeetupMemberRequest
 from app.schemas.position import Position
 from app.services import members
 
@@ -22,14 +25,31 @@ STORAGE_ERRORS = [
 ]
 
 
-class BoomRedis:
-    """Redis client where every call fails at the connection level."""
+class BoomSession:
+    """A DB session where every operation fails at the connection level."""
 
     def __getattr__(self, _name):
-        async def _fail(*args, **kwargs):
-            raise ConnectionError("redis is down")
+        def _fail(*args, **kwargs):
+            raise OperationalError("<test>", {}, Exception("database is down"))
 
         return _fail
+
+
+class BoomOnCommitSession:
+    """A session whose lookup succeeds but whose write fails - mirrors an
+    update that finds the row fine and then loses the connection on commit."""
+
+    def __init__(self, existing: Member):
+        self._existing = existing
+
+    def get(self, *args, **kwargs):
+        return self._existing
+
+    def commit(self):
+        raise OperationalError("<test>", {}, Exception("database is down"))
+
+    def rollback(self):
+        pass
 
 
 def _update_request() -> UpdateMeetupMemberRequest:
@@ -50,7 +70,7 @@ def test_not_found_is_a_client_error():
 
 @pytest.mark.parametrize("error", STORAGE_ERRORS)
 def test_storage_errors_are_503(error):
-    """A Redis outage is our fault, and retrying the same request may succeed."""
+    """A storage outage is our fault, and retrying the same request may succeed."""
     assert error.status == 503
     assert issubclass(error, AppBaseException)
 
@@ -102,62 +122,46 @@ def test_error_schema_names_are_unique():
 # --- service layer ----------------------------------------------------------
 
 
-async def test_get_member_raises_not_found_for_missing_id(redis):
+def test_get_member_raises_not_found_for_missing_id(db):
     with pytest.raises(MemberNotFoundError):
-        await members.get_member(redis, "404")
+        members.get_member(db, str(uuid.uuid4()))
 
 
-async def test_update_member_raises_not_found_for_missing_id(redis):
+def test_update_member_raises_not_found_for_missing_id(db):
     with pytest.raises(MemberNotFoundError):
-        await members.update_member(redis, "404", _update_request())
+        members.update_member(db, str(uuid.uuid4()), _update_request())
 
 
-# --- cache layer translates infrastructure failures -------------------------
+def test_get_member_rejects_a_malformed_id_as_not_found(db):
+    """A non-UUID id is just as absent as an unknown one - same 404, not a 500."""
+    with pytest.raises(MemberNotFoundError):
+        members.get_member(db, "not-a-uuid")
 
 
-async def test_get_translates_redis_failure():
+# --- service layer translates infrastructure failures -----------------------
+
+
+def test_get_member_translates_db_failure():
     with pytest.raises(MemberLoadError) as info:
-        await members_cache.get(BoomRedis(), "1")
-    assert isinstance(info.value.__cause__, ConnectionError)
+        members.get_member(BoomSession(), str(uuid.uuid4()))
+    assert isinstance(info.value.__cause__, OperationalError)
 
 
-async def test_list_all_translates_redis_failure():
+def test_get_members_translates_db_failure():
     with pytest.raises(MembersLoadError):
-        await members_cache.list_all(BoomRedis())
+        members.get_members(BoomSession())
 
 
-async def test_next_id_translates_redis_failure():
-    """Previously unguarded, which surfaced as a bare 500 on POST."""
+def test_add_member_translates_db_failure():
     with pytest.raises(MemberCreateError):
-        await members_cache.next_id(BoomRedis())
+        members.add_member(BoomSession(), AddMeetupMemberRequest(name="Ada"))
 
 
-class _BoomPipeline:
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc_info):
-        return False
-
-    def set(self, *a, **kw):
-        return self
-
-    def sadd(self, *a, **kw):
-        return self
-
-    async def execute(self):
-        raise ConnectionError("redis is down")
-
-
-class _RedisWithBoomPipeline:
-    def pipeline(self, *a, **kw):
-        return _BoomPipeline()
-
-
-async def test_put_translates_redis_failure():
+def test_update_member_translates_db_failure():
+    existing = Member(id=uuid.uuid4(), display_name="Ada")
     with pytest.raises(MemberUpdateError):
-        await members_cache.put(
-            _RedisWithBoomPipeline(), MeetupMember(id="1", name="Ada")
+        members.update_member(
+            BoomOnCommitSession(existing), str(existing.id), _update_request()
         )
 
 
@@ -180,7 +184,7 @@ async def test_storage_outage_returns_503(broken_client):
 
 
 async def test_get_member_during_outage_returns_503(broken_client):
-    resp = await broken_client.get("/api/meetup/members/1")
+    resp = await broken_client.get(f"/api/meetup/members/{uuid.uuid4()}")
     assert resp.status_code == 503
     assert resp.json()["error"] == "member_load_error"
 
@@ -192,10 +196,10 @@ async def test_post_during_outage_returns_503(broken_client):
 
 
 async def test_unhandled_exception_returns_generic_500(client, monkeypatch):
-    async def boom(*args, **kwargs):
+    def boom(*args, **kwargs):
         raise RuntimeError("secret internal detail")
 
-    monkeypatch.setattr(members_cache, "list_all", boom)
+    monkeypatch.setattr(members, "get_members", boom)
 
     resp = await client.get("/api/meetup/members")
     assert resp.status_code == 500
@@ -231,7 +235,7 @@ async def test_validation_error_uses_the_envelope(client):
 async def test_validation_error_reports_every_bad_field(client):
     """Reshaping into our envelope must not lose which fields failed."""
     resp = await client.put(
-        "/api/meetup/members/1",
+        f"/api/meetup/members/{uuid.uuid4()}",
         json={"position": {"latitude": "not-a-number"}},
     )
     assert resp.status_code == 422
