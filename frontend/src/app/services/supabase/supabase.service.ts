@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { environment } from '../../environments/environment';
+import { environment } from '../../../environments/environment';
 
 export type OAuthProvider = 'google' | 'github';
 
@@ -12,6 +12,20 @@ export class SupabaseService {
     environment.supabaseUrl,
     environment.supabaseKey,
   );
+
+  // Kept in sync by onAuthStateChange so the OpenAPI client's Configuration
+  // can read it synchronously per request, without awaiting getSession().
+  private _accessToken: string | null = null;
+
+  constructor() {
+    this.supabase.auth.onAuthStateChange((_event, session) => {
+      this._accessToken = session?.access_token ?? null;
+    });
+  }
+
+  get accessToken(): string | undefined {
+    return this._accessToken ?? undefined;
+  }
 
   async signInWith(provider: OAuthProvider) {
     return await this.supabase.auth.signInWithOAuth({
