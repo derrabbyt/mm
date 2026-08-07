@@ -10,7 +10,15 @@ pre-commit:
       glob:
         - "*.py"
         - "**/*.py"
-      run: uv run ruff check {staged_files}
+      # Piped so format finishes rewriting the files before check reads them.
+      group:
+        piped: true
+        jobs:
+          - name: format
+            run: uv run ruff format {staged_files}
+            stage_fixed: true
+          - name: check
+            run: uv run ruff check {staged_files}
 
     - name: frontend-ng-lint
       root: frontend/
