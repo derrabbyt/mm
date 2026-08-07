@@ -43,3 +43,5 @@ __screenshots__/
 .DS_Store
 Thumbs.db
 
+# Generated OpenAPI client, regenerated locally with `npm run api:generate`
+src/app/open-api/
