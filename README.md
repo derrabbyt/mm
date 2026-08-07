@@ -2,6 +2,8 @@
 
 npm install
 
+npm run api:generate (needs fastapi running, output is gitignored)
+
 ng serve
 
 uv run fastapi dev
