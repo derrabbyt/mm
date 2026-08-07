@@ -5,7 +5,6 @@ import { NgxMapLibreGLModule } from '@maplibre/ngx-maplibre-gl';
 import type { MapMouseEvent } from 'maplibre-gl';
 import type { FeatureCollection, Point } from 'geojson';
 import { MeetupService } from '../../services/meetup/meetup.service';
-import { AddMeetupMemberRequest } from '../../open-api/model/add-meetup-member-request';
 
 @Component({
   selector: 'app-map',
@@ -20,24 +19,22 @@ export class Map implements OnInit {
 
   private meetup = inject(MeetupService);
 
-  readonly members = this.meetup.members;
+  readonly participants = this.meetup.participants;
   readonly placed = this.meetup.placed;
   readonly selected = this.meetup.selected;
   readonly selectedId = this.meetup.selectedId;
+  readonly activeMeetup = this.meetup.activeMeetup;
 
   newName = '';
 
   readonly mapStyle = 'https://tiles.openfreemap.org/styles/liberty';
 
-  // IMPORTANT: MapLibre coordinates are [longitude, latitude]
   readonly center: [number, number] = [16.3738, 48.2082];
 
   readonly zoom: [number] = [12];
 
   private static readonly POINT_COUNT = 20;
 
-  // Half-extent of the box the points are scattered in, in degrees around
-  // `center`. Roughly ~5km at Vienna's latitude, so points stay in view at zoom 12.
   private static readonly SPREAD_DEG = 0.05;
 
   readonly points = signal<FeatureCollection<Point>>({
@@ -45,26 +42,24 @@ export class Map implements OnInit {
     features: [],
   });
 
-  /** Where the user last clicked, or null before the first click. */
   readonly clickedCoords = signal<[number, number] | null>(null);
 
   ngOnInit() {
     this.meetup.load();
   }
 
-  addMember() {
+  addParticipant() {
     const name = this.newName.trim();
     if (!name) {
       return;
     }
 
-    const member: AddMeetupMemberRequest = { name };
-    this.meetup.addMember(member);
+    this.meetup.addParticipant(name);
     this.newName = '';
   }
 
-  selectMember(id: string) {
-    this.meetup.selectMember(id);
+  selectParticipant(id: string) {
+    this.meetup.selectParticipant(id);
   }
 
   refresh() {
@@ -78,9 +73,8 @@ export class Map implements OnInit {
 
     this.clickedCoords.set([lng, lat]);
 
-    // Clicking with a member selected places (or moves) them here.
     if (this.selectedId()) {
-      this.meetup.placeMember({ latitude: lat, longitude: lng });
+      this.meetup.placeParticipant({ latitude: lat, longitude: lng });
     }
   }
 

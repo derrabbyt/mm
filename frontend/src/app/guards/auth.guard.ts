@@ -6,8 +6,8 @@ export const authGuard: CanActivateFn = async (route, state) => {
   const supabaseService = inject(SupabaseService);
   const router = inject(Router);
 
-  // getUser() resolves to { data, error }, which is truthy even when signed
-  // out - the user itself is what has to be checked.
+  await supabaseService.ready;
+
   const { data } = await supabaseService.getUser();
   if (!data.user) {
     router.navigate(['/error'], { queryParams: { returnUrl: state.url } });

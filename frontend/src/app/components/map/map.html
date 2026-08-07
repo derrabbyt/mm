@@ -1,43 +1,47 @@
 <button (click)="start()">Display random Points</button>
 
-<h3>Members</h3>
+@if (activeMeetup(); as meetup) {
+  <h3>Participants of {{ meetup.name }} ({{ meetup.location }})</h3>
+} @else {
+  <h3>Participants</h3>
+}
 
 <button (click)="refresh()">Refresh from backend</button>
 
-<form (ngSubmit)="addMember()">
+<form (ngSubmit)="addParticipant()">
   <input name="newName" [(ngModel)]="newName" placeholder="Name" />
-  <button type="submit">Add member</button>
+  <button type="submit">Add participant</button>
 </form>
 
 <ul>
-  @for (member of members(); track member.id) {
+  @for (participant of participants(); track participant.id) {
     <li>
       <label>
         <input
           type="radio"
-          name="selectedMember"
-          [value]="member.id"
-          [checked]="member.id === selectedId()"
-          (change)="selectMember(member.id)"
+          name="selectedParticipant"
+          [value]="participant.id"
+          [checked]="participant.id === selectedId()"
+          (change)="selectParticipant(participant.id)"
         />
-        {{ member.name }}
-        @if (member.position) {
-          ({{ member.position.latitude | number: '1.5-5' }},
-          {{ member.position.longitude | number: '1.5-5' }})
+        {{ participant.name }} [{{ participant.travel_mode }}]
+        @if (participant.position) {
+          ({{ participant.position.latitude | number: '1.5-5' }},
+          {{ participant.position.longitude | number: '1.5-5' }})
         } @else {
           (not placed)
         }
       </label>
     </li>
   } @empty {
-    <li>No members yet.</li>
+    <li>No participants yet.</li>
   }
 </ul>
 
-@if (selected(); as member) {
-  <p>Selected: {{ member.name }} — click the map to place them.</p>
+@if (selected(); as participant) {
+  <p>Selected: {{ participant.name }} — click the map to place them.</p>
 } @else {
-  <p>Select a member to place them on the map.</p>
+  <p>Select a participant to place them on the map.</p>
 }
 
 <mgl-map
@@ -61,10 +65,10 @@
     }"
   />
 
-  @for (member of placed(); track member.id) {
+  @for (participant of placed(); track participant.id) {
     <mgl-marker
-      [lngLat]="[member.position!.longitude, member.position!.latitude]"
-      [color]="member.id === selectedId() ? '#0090ff' : '#30a46c'"
+      [lngLat]="[participant.position!.longitude, participant.position!.latitude]"
+      [color]="participant.id === selectedId() ? '#0090ff' : '#30a46c'"
     />
   }
 </mgl-map>

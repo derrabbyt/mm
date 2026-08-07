@@ -13,13 +13,17 @@ export class SupabaseService {
     environment.supabaseKey,
   );
 
-  // Kept in sync by onAuthStateChange so the OpenAPI client's Configuration
-  // can read it synchronously per request, without awaiting getSession().
   private _accessToken: string | null = null;
+
+  readonly ready: Promise<void>;
 
   constructor() {
     this.supabase.auth.onAuthStateChange((_event, session) => {
       this._accessToken = session?.access_token ?? null;
+    });
+
+    this.ready = this.supabase.auth.getSession().then(({ data }) => {
+      this._accessToken ??= data.session?.access_token ?? null;
     });
   }
 
