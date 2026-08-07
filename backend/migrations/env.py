@@ -5,6 +5,10 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 from sqlalchemy.schema import SchemaItem
 
+# app.models is imported for the side effect of registering every model on
+# Base.metadata. Without it autogenerate sees empty metadata and emits a DROP
+# for each table.
+from app import models  # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
 

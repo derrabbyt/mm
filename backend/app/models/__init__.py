@@ -1,4 +1,5 @@
 from .account import Account
-from .member import Member
+from .meetup import Meetup
+from .meetup_participant import MeetupParticipant
 
-__all__ = ["Account", "Member"]
+__all__ = ["Account", "Meetup", "MeetupParticipant"]

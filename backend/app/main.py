@@ -6,7 +6,7 @@ from .core.config import settings
 from .core.exception_handlers import register_exception_handlers
 from .core.logging import setup_logging
 from .routers.accounts import router as accounts_router
-from .routers.meetup import router as meetup_router
+from .routers.meetups import router as meetups_router
 from .routers.test import router as test_router
 
 setup_logging()
@@ -28,7 +28,7 @@ app.add_middleware(
 FastAPIRedis(app).lifespan().caching()
 
 app.include_router(test_router)
-app.include_router(meetup_router)
+app.include_router(meetups_router)
 app.include_router(accounts_router)
 
 register_exception_handlers(app)

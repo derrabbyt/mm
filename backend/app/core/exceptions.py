@@ -102,44 +102,84 @@ class UnauthenticatedRoleError(AppBaseException):
         super().__init__("Authenticated account required")
 
 
-class MemberNotFoundError(AppBaseException):
-    code = "member_not_found"
+class MeetupNotFoundError(AppBaseException):
+    code = "meetup_not_found"
     status = 404
 
-    def __init__(self, member_id: str):
-        super().__init__(f"Member {member_id} not found")
+    def __init__(self, meetup_id: str):
+        super().__init__(f"Meetup {meetup_id} not found")
 
 
-class MemberLoadError(AppBaseException):
-    code = "member_load_error"
+class MeetupLoadError(AppBaseException):
+    code = "meetup_load_error"
     status = 503
 
-    def __init__(self, member_id: str):
-        super().__init__(f"Member {member_id} could not be loaded")
+    def __init__(self, meetup_id: str):
+        super().__init__(f"Meetup {meetup_id} could not be loaded")
 
 
-class MembersLoadError(AppBaseException):
-    code = "members_load_error"
-    status = 503
-
-    def __init__(self):
-        super().__init__("Members could not be loaded")
-
-
-class MemberUpdateError(AppBaseException):
-    code = "member_update_error"
-    status = 503
-
-    def __init__(self, member_id: str):
-        super().__init__(f"Member {member_id} could not be updated")
-
-
-class MemberCreateError(AppBaseException):
-    code = "member_create_error"
+class MeetupsLoadError(AppBaseException):
+    code = "meetups_load_error"
     status = 503
 
     def __init__(self):
-        super().__init__("Member could not be created")
+        super().__init__("Meetups could not be loaded")
+
+
+class MeetupCreateError(AppBaseException):
+    code = "meetup_create_error"
+    status = 503
+
+    def __init__(self):
+        super().__init__("Meetup could not be created")
+
+
+class AccountNotFoundError(AppBaseException):
+    code = "account_not_found"
+    status = 404
+
+    def __init__(self, account_id: str):
+        super().__init__(f"Account {account_id} not found")
+
+
+class ParticipantNotFoundError(AppBaseException):
+    code = "participant_not_found"
+    status = 404
+
+    def __init__(self, participant_id: str):
+        super().__init__(f"Participant {participant_id} not found")
+
+
+class ParticipantLoadError(AppBaseException):
+    code = "participant_load_error"
+    status = 503
+
+    def __init__(self, participant_id: str):
+        super().__init__(f"Participant {participant_id} could not be loaded")
+
+
+class ParticipantsLoadError(AppBaseException):
+    code = "participants_load_error"
+    status = 503
+
+    def __init__(self):
+        super().__init__("Participants could not be loaded")
+
+
+class ParticipantUpdateError(AppBaseException):
+    code = "participant_update_error"
+    status = 503
+
+    def __init__(self, participant_id: str):
+        super().__init__(f"Participant {participant_id} could not be updated")
+
+
+class ParticipantCreateError(AppBaseException):
+    code = "participant_create_error"
+    status = 503
+
+    def __init__(self):
+        super().__init__("Participant could not be created")
 
 
 class AccountUpsertError(AppBaseException):

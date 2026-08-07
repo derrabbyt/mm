@@ -1,6 +1,7 @@
+import logging
 from typing import Annotated, Any
 
-from fastapi import Depends, logger
+from fastapi import Depends
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
@@ -10,6 +11,8 @@ from ..auth.supabase import CurrentIdentityDep, SupabaseIdentity
 from ..core.exceptions import AccountUpsertError
 from ..db.session import DbSessionDep
 from ..models.account import Account
+
+logger = logging.getLogger(__name__)
 
 _METADATA_KEYS = {"full_name", "name", "user_name", "preferred_username", "locale"}
 
@@ -38,8 +41,8 @@ def _extract_profile(
 
 
 def get_or_create_account(db: Session, identity: SupabaseIdentity) -> Account:
-    """First login creates the account. Later logins refresh email/providers/last_seen_at 
-    but never touch display_name or avatar_url - see Account.profile_customized for why 
+    """First login creates the account. Later logins refresh email/providers/last_seen_at
+    but never touch display_name or avatar_url - see Account.profile_customized for why
     they're absent below.
     """
     display_name, avatar_url, providers, metadata = _extract_profile(identity.claims)

@@ -40,7 +40,9 @@ def get_current_identity(credentials: BearerCredentials) -> SupabaseIdentity:
         raise MissingBearerTokenError()
 
     try:
-        signing_key = get_jwks_client().get_signing_key_from_jwt(credentials.credentials)
+        signing_key = get_jwks_client().get_signing_key_from_jwt(
+            credentials.credentials
+        )
         claims: dict[str, Any] = jwt.decode(
             credentials.credentials,
             signing_key.key,

@@ -23,7 +23,7 @@ class Account(Base):
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
     # Application-owned profile, seeded from OAuth metadata on first login and
-    # never touched by later logins 
+    # never touched by later logins
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 

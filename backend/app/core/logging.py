@@ -34,7 +34,6 @@ class ColorFormatter(logging.Formatter):
         return super().format(record)
 
 
-
 # not sure if we actually want to do that, i feel like we could lose info
 # but leave as long as it works
 class DropASGIExceptionEcho(logging.Filter):

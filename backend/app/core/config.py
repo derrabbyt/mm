@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", extra="ignore")
     log_level: str = "INFO"
 
-
     # Every unspecified variable is required in .env
     postgres_host: str
     postgres_port: int
