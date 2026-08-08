@@ -7,12 +7,15 @@ import { MeetupParticipantRead } from '../../open-api/model/meetup-participant-r
 import { UpdateParticipantRequest } from '../../open-api/model/update-participant-request';
 import { Position } from '../../open-api/model/position';
 import { TravelMode } from '../../open-api/model/travel-mode';
+import { Router } from '@angular/router';
 
 @Injectable({
   providedIn: 'root',
 })
 export class MeetupService {
   private api = inject(MeetupsApi);
+  private router = inject(Router);
+  
 
   private readonly _meetups = signal<MeetupRead[]>([]);
   private readonly _meetupId = signal<string | null>(null);
@@ -49,11 +52,16 @@ export class MeetupService {
     this._selectedId.set(null);
 
     this.api.getMeetup({ meetupId }).subscribe({
-      next: (meetup) => this._meetup.set(meetup),
-      error: (err) => console.error('[meetup] loading meetup failed', err),
+      next: (meetup) => {
+            this._meetup.set(meetup);
+            this.reloadParticipants(meetupId);
+      },
+      error: (err) => { 
+        console.error('[meetup] loading meetup failed', err); 
+        this.router.navigate(['/error']);
+      },
     });
 
-    this.reloadParticipants(meetupId);
   }
 
   addParticipant(name: string) {
