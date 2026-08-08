@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db.base import Base
+from .travel_mode import TravelMode
 
 
 class MeetupParticipant(Base):
@@ -35,7 +36,16 @@ class MeetupParticipant(Base):
 
     name: Mapped[str] = mapped_column(String(200), nullable=False)
 
-    travel_mode: Mapped[str] = mapped_column(String(50), nullable=False)
+    travel_mode: Mapped[TravelMode] = mapped_column(
+        Enum(
+            TravelMode,
+            native_enum=False,
+            length=50,
+            create_constraint=False,
+            values_callable=lambda enum: [member.value for member in enum],
+        ),
+        nullable=False,
+    )
 
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
 

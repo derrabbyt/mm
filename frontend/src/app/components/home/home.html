@@ -1,0 +1,41 @@
+<form class="flex max-w-sm flex-col gap-3" (ngSubmit)="create()">
+  <input
+    name="name"
+    placeholder="Name"
+    class="rounded border border-gray-300 px-3 py-2"
+    [ngModel]="name()"
+    (ngModelChange)="name.set($event)"
+  />
+  <input
+    name="location"
+    placeholder="Location"
+    class="rounded border border-gray-300 px-3 py-2"
+    [ngModel]="location()"
+    (ngModelChange)="location.set($event)"
+  />
+  <input
+    name="startsAt"
+    type="datetime-local"
+    class="rounded border border-gray-300 px-3 py-2"
+    [ngModel]="startsAt()"
+    (ngModelChange)="startsAt.set($event)"
+  />
+  <button
+    type="submit"
+    class="rounded bg-blue-600 px-3 py-2 text-white enabled:hover:bg-blue-700 disabled:opacity-50"
+    [disabled]="!user()"
+  >
+    Create meetup
+  </button>
+</form>
+
+@if (user()) {
+  <ul class="mt-8 flex max-w-sm flex-col gap-2">
+    @for (meetup of list(); track meetup.id) {
+      <li>
+        <a class="underline" [routerLink]="['/meetup', meetup.id]">{{ meetup.name }}</a>
+        <span class="text-gray-600"> — {{ meetup.location }}</span>
+      </li>
+    }
+  </ul>
+}

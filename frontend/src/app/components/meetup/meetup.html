@@ -1,0 +1,42 @@
+@if (meetup(); as meetup) {
+  <h1 class="text-lg font-semibold">{{ meetup.name }}</h1>
+  <p class="text-sm text-gray-600">{{ meetup.location }} — {{ meetup.starts_at }}</p>
+}
+
+<form class="mt-4 flex max-w-sm gap-2" (ngSubmit)="addParticipant()">
+  <input
+    name="newName"
+    placeholder="Name"
+    class="flex-1 rounded border border-gray-300 px-3 py-2"
+    [ngModel]="newName()"
+    (ngModelChange)="newName.set($event)"
+  />
+  <button type="submit" class="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700">Add</button>
+</form>
+
+<ul class="mt-4 flex flex-col gap-2">
+  @for (participant of participants(); track participant.id) {
+    <app-participant-item
+      [participant]="participant"
+      [selected]="participant.id === selectedId()"
+      (selectRequested)="selectParticipant($event)"
+      (save)="saveParticipant($event)"
+    />
+  }
+</ul>
+
+<mgl-map
+  class="mt-4"
+  [mapStyle]="mapStyle"
+  [center]="center"
+  [zoom]="zoom"
+  cursorStyle="crosshair"
+  (mapClick)="onMapClick($event)"
+>
+  @for (participant of placed(); track participant.id) {
+    <mgl-marker
+      [lngLat]="[participant.position!.longitude, participant.position!.latitude]"
+      [color]="participant.id === selectedId() ? '#0090ff' : '#30a46c'"
+    />
+  }
+</mgl-map>

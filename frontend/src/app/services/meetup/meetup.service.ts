@@ -1,95 +1,64 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { Observable, of, switchMap, tap } from 'rxjs';
+import { Observable, switchMap } from 'rxjs';
 import { MeetupsService as MeetupsApi } from '../../open-api/api/meetups.service';
+import { CreateMeetupRequest } from '../../open-api/model/create-meetup-request';
 import { MeetupRead } from '../../open-api/model/meetup-read';
 import { MeetupParticipantRead } from '../../open-api/model/meetup-participant-read';
+import { UpdateParticipantRequest } from '../../open-api/model/update-participant-request';
 import { Position } from '../../open-api/model/position';
-
-const DEFAULT_MEETUP_NAME = 'My meetup';
-const DEFAULT_MEETUP_LOCATION = 'Vienna';
+import { TravelMode } from '../../open-api/model/travel-mode';
 
 @Injectable({
   providedIn: 'root',
 })
 export class MeetupService {
-
   private api = inject(MeetupsApi);
 
   private readonly _meetups = signal<MeetupRead[]>([]);
-  private readonly _activeMeetupId = signal<string | null>(null);
+  private readonly _meetupId = signal<string | null>(null);
+  private readonly _meetup = signal<MeetupRead | null>(null);
   private readonly _participants = signal<MeetupParticipantRead[]>([]);
   private readonly _selectedId = signal<string | null>(null);
 
   readonly meetups = this._meetups.asReadonly();
-  readonly activeMeetupId = this._activeMeetupId.asReadonly();
+  readonly meetup = this._meetup.asReadonly();
   readonly participants = this._participants.asReadonly();
   readonly selectedId = this._selectedId.asReadonly();
 
-  readonly activeMeetup = computed(() =>
-    this._meetups().find((m) => m.id === this._activeMeetupId()) ?? null,
-  );
-
-  readonly selected = computed(() =>
-    this._participants().find((p) => p.id === this._selectedId()) ?? null,
+  readonly selected = computed(
+    () => this._participants().find((p) => p.id === this._selectedId()) ?? null,
   );
 
   readonly placed = computed(() => this._participants().filter((p) => p.position));
 
-  load() {
-    this.api
-      .getMeetups()
-      .pipe(
-        tap((meetups) => this._meetups.set(meetups)),
-        switchMap((meetups) => (meetups.length ? of(meetups[0]) : this.createDefaultMeetup())),
-        tap((meetup) => this._activeMeetupId.set(meetup.id)),
-        switchMap((meetup) => this.api.getParticipants({ meetupId: meetup.id })),
-      )
-      .subscribe({
-        next: (participants) => this._participants.set(participants),
-        error: (err) =>
-          console.error('[meetup] loading the meetup and its participants failed', err),
-      });
-  }
-
-  private createDefaultMeetup(): Observable<MeetupRead> {
-    return this.api
-      .createMeetup({
-        createMeetupRequest: {
-          name: DEFAULT_MEETUP_NAME,
-          location: DEFAULT_MEETUP_LOCATION,
-          starts_at: new Date().toISOString(),
-        },
-      })
-      .pipe(tap((created) => this._meetups.set([created])));
-  }
-
-  refresh() {
-    const meetupId = this._activeMeetupId();
-    if (!meetupId) {
-      this.load();
-      return;
-    }
-
-    this.api.getParticipants({ meetupId }).subscribe({
-      next: (participants) => this._participants.set(participants),
-      error: (err) => console.error('[meetup] refreshing participants failed', err),
+  loadMeetups() {
+    this.api.getMeetups().subscribe({
+      next: (meetups) => this._meetups.set(meetups),
+      error: (err) => console.error('[meetup] loading meetups failed', err),
     });
   }
 
-  selectMeetup(meetupId: string) {
-    this._activeMeetupId.set(meetupId);
+  create(request: CreateMeetupRequest): Observable<MeetupRead> {
+    return this.api.createMeetup({ createMeetupRequest: request });
+  }
+
+  open(meetupId: string) {
+    this._meetupId.set(meetupId);
+    this._meetup.set(null);
+    this._participants.set([]);
     this._selectedId.set(null);
-    this.api.getParticipants({ meetupId }).subscribe({
-      next: (participants) => this._participants.set(participants),
-      error: (err) =>
-        console.error('[meetup] loading participants for the selected meetup failed', err),
+
+    this.api.getMeetup({ meetupId }).subscribe({
+      next: (meetup) => this._meetup.set(meetup),
+      error: (err) => console.error('[meetup] loading meetup failed', err),
     });
+
+    this.reloadParticipants(meetupId);
   }
 
   addParticipant(name: string) {
-    const meetupId = this._activeMeetupId();
+    const meetupId = this._meetupId();
     if (!meetupId) {
-      console.error('[meetup] cannot add a participant before a meetup is active');
       return;
     }
 
@@ -107,13 +76,24 @@ export class MeetupService {
       });
   }
 
+  saveParticipant(id: string, name: string, travelMode: TravelMode) {
+    this.update(id, { name, travel_mode: travelMode });
+  }
+
+  placeParticipant(position: Position) {
+    const selected = this.selected();
+    if (selected) {
+      this.update(selected.id, { position });
+    }
+  }
+
   selectParticipant(id: string | null) {
     this._selectedId.set(id);
   }
 
-  placeParticipant(position: Position) {
-    const meetupId = this._activeMeetupId();
-    const participant = this.selected();
+  private update(id: string, changes: Partial<UpdateParticipantRequest>) {
+    const meetupId = this._meetupId();
+    const participant = this._participants().find((p) => p.id === id);
     if (!meetupId || !participant) {
       return;
     }
@@ -121,19 +101,26 @@ export class MeetupService {
     this.api
       .updateParticipant({
         meetupId,
-        participantId: participant.id,
+        participantId: id,
         updateParticipantRequest: {
           name: participant.name,
           travel_mode: participant.travel_mode,
+          position: participant.position,
           account_id: participant.account_id,
-          position,
+          ...changes,
         },
       })
       .pipe(switchMap(() => this.api.getParticipants({ meetupId })))
       .subscribe({
         next: (participants) => this._participants.set(participants),
-        error: (err) =>
-          console.error(`[meetup] placing participant "${participant.name}" failed`, err),
+        error: (err) => console.error(`[meetup] updating participant ${id} failed`, err),
       });
+  }
+
+  private reloadParticipants(meetupId: string) {
+    this.api.getParticipants({ meetupId }).subscribe({
+      next: (participants) => this._participants.set(participants),
+      error: (err) => console.error('[meetup] loading participants failed', err),
+    });
   }
 }

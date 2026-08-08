@@ -1,0 +1,45 @@
+<li
+  class="flex flex-wrap items-center gap-2 rounded border px-2 py-1"
+  [class]="selected() ? 'border-blue-500 bg-blue-50' : 'border-transparent'"
+>
+  <!-- <input
+    type="radio"
+    name="participant"
+    [checked]="selected()"
+    (change)="selectRequested.emit(participant().id)"
+  /> -->
+
+  <input
+    name="name"
+    class="w-40 rounded border border-gray-300 px-2 py-1"
+    [ngModel]="name()"
+    (ngModelChange)="name.set($event)"
+    (change)="commit()"
+  />
+
+  <button
+    type="button"
+    class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-100"
+    (click)="pickLocation()"
+  >
+    Pick Location
+  </button>
+
+
+  <select
+    name="travelMode"
+    class="rounded border border-gray-300 px-2 py-1"
+    [ngModel]="travelMode()"
+    (ngModelChange)="travelMode.set($event); commit()"
+  >
+    @for (mode of travelModes; track mode) {
+      <option [value]="mode">{{ mode }}</option>
+    }
+  </select>
+
+  @if (participant().position; as position) {
+    <span class="text-sm text-gray-600">
+      {{ position.latitude | number: '1.5-5' }}, {{ position.longitude | number: '1.5-5' }}
+    </span>
+  }
+</li>

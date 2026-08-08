@@ -1,0 +1,12 @@
+<header class="flex items-center justify-between border-b border-gray-300 px-4 py-3">
+  <a routerLink="/" class="font-semibold">mm</a>
+
+  <nav class="flex items-center gap-4 text-sm">
+    @if (user()) {
+      <a routerLink="/profile" class="hover:underline">Profile</a>
+      <button type="button" class="hover:underline" (click)="logout()">Logout</button>
+    } @else {
+      <a routerLink="/auth" class="hover:underline">Login</a>
+    }
+  </nav>
+</header>

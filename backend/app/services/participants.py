@@ -150,8 +150,8 @@ def update_participant(
     participant.name = data.name
     participant.travel_mode = data.travel_mode
     participant.account_id = data.account_id
-    participant.latitude = data.position.latitude
-    participant.longitude = data.position.longitude
+    participant.latitude = data.position.latitude if data.position else None
+    participant.longitude = data.position.longitude if data.position else None
     try:
         db.commit()
     except SQLAlchemyError as exc:

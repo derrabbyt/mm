@@ -429,6 +429,17 @@ async def test_relinking_round_trips_over_http(client, meetup, db, account):
     assert relinked.json()["account_id"] == str(other_id)
 
 
+async def test_an_unknown_travel_mode_is_rejected(client, meetup):
+    resp = await client.post(
+        f"/api/meetups/{meetup.id}/participants",
+        json={"name": "Ada", "travel_mode": "teleport"},
+    )
+    assert resp.status_code == 422
+    assert ("body", "travel_mode") in {
+        tuple(d["location"]) for d in resp.json()["details"]
+    }
+
+
 async def test_unknown_account_over_http_is_a_404(client, meetup):
     created = await client.post(
         f"/api/meetups/{meetup.id}/participants", json={"name": "Ada"}
@@ -448,6 +459,41 @@ async def test_unknown_account_over_http_is_a_404(client, meetup):
         "error": "account_not_found",
         "message": f"Account {unknown} not found",
     }
+
+
+def test_an_unplaced_participant_can_be_renamed(db, meetup, account):
+    added = participants.add_participant(
+        db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
+    )
+
+    renamed = participants.update_participant(
+        db,
+        str(meetup.id),
+        str(added.id),
+        account.id,
+        UpdateParticipantRequest(name="Grace", travel_mode="walk"),
+    )
+    assert renamed.name == "Grace"
+    assert renamed.travel_mode == "walk"
+    assert renamed.position is None
+
+
+def test_omitting_the_position_clears_it(db, meetup, account):
+    added = participants.add_participant(
+        db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
+    )
+    participants.update_participant(
+        db, str(meetup.id), str(added.id), account.id, _update_request()
+    )
+
+    cleared = participants.update_participant(
+        db,
+        str(meetup.id),
+        str(added.id),
+        account.id,
+        UpdateParticipantRequest(name="Ada"),
+    )
+    assert cleared.position is None
 
 
 # --- service layer round trip -----------------------------------------------
