@@ -8,6 +8,7 @@ dependencies = [
     "alembic>=1.18.5",
     "fastapi-redis-sdk>=0.7.0",
     "fastapi[standard]>=0.140.0",
+    "h3>=4.5.0",
     "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",

@@ -115,6 +115,31 @@ def get_participants(
     return [_to_schema(participant) for participant in participants]
 
 
+def get_positioned_participants(
+    db: Session, meetup_id: uuid.UUID
+) -> tuple[list[MeetupParticipant], list[uuid.UUID]]:
+    try:
+        participants = db.scalars(
+            select(MeetupParticipant)
+            .where(MeetupParticipant.meetup_id == meetup_id)
+            .order_by(MeetupParticipant.created_at, MeetupParticipant.id)
+        ).all()
+    except SQLAlchemyError as exc:
+        raise ParticipantsLoadError() from exc
+
+    positioned = [
+        participant
+        for participant in participants
+        if participant.latitude is not None and participant.longitude is not None
+    ]
+    excluded = [
+        participant.id
+        for participant in participants
+        if participant.latitude is None or participant.longitude is None
+    ]
+    return positioned, excluded
+
+
 def get_participant(
     db: Session, meetup_id: str, participant_id: str, account_id: uuid.UUID
 ) -> MeetupParticipantRead:

@@ -753,7 +753,9 @@ async def test_every_route_documents_the_envelope_for_422(client):
     """The 422 handler is overridden, so no route may still promise FastAPI's shape.
 
     Set once at router level via default_responses(); this catches a new router
-    that forgets it.
+    that forgets it. A route declaring its own 422 replaces that entry outright,
+    so it has to list ValidationError alongside them - which is what the union
+    branch below checks.
     """
     schema = (await client.get("/api/openapi.json")).json()
 
@@ -762,8 +764,11 @@ async def test_every_route_documents_the_envelope_for_422(client):
             response = operation.get("responses", {}).get("422")
             assert response is not None, f"{method.upper()} {path} documents no 422"
 
-            ref = response["content"]["application/json"]["schema"]["$ref"]
-            assert ref.endswith("/ValidationError"), f"{method.upper()} {path} -> {ref}"
+            body = response["content"]["application/json"]["schema"]
+            refs = [member["$ref"] for member in body.get("oneOf", [body])]
+            assert any(ref.endswith("/ValidationError") for ref in refs), (
+                f"{method.upper()} {path} -> {refs}"
+            )
 
 
 async def test_every_participant_route_requires_a_bearer_token(client):

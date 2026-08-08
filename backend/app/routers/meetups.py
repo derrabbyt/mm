@@ -9,12 +9,16 @@ from ..core.exceptions import (
     MeetupNotFoundError,
     MeetupsLoadError,
     MissingBearerTokenError,
+    NoPositionedParticipantsError,
     ParticipantCreateError,
     ParticipantLoadError,
     ParticipantNotFoundError,
+    ParticipantOffGridError,
     ParticipantsLoadError,
     ParticipantUpdateError,
+    RendezvousInfeasibleError,
     UnauthenticatedRoleError,
+    ValidationError,
     default_responses,
     responses,
 )
@@ -25,7 +29,8 @@ from ..schemas.participant import (
     MeetupParticipantRead,
     UpdateParticipantRequest,
 )
-from ..services import meetups, participants
+from ..schemas.rendezvous import RendezvousRead
+from ..services import meetups, participants, travel_times
 from ..services.accounts import CurrentAccountDep
 
 AUTH_ERRORS = (
@@ -84,6 +89,26 @@ def get_participants(
     meetup_id: str, account: CurrentAccountDep, db: DbSessionDep
 ) -> list[MeetupParticipantRead]:
     return participants.get_participants(db, meetup_id, account.id)
+
+
+@router.get(
+    "/{meetup_id}/rendezvous",
+    operation_id="getRendezvous",
+    responses=responses(
+        *AUTH_ERRORS,
+        MeetupNotFoundError,
+        MeetupLoadError,
+        ParticipantsLoadError,
+        NoPositionedParticipantsError,
+        ParticipantOffGridError,
+        RendezvousInfeasibleError,
+        ValidationError,
+    ),
+)
+def get_rendezvous(
+    meetup_id: str, account: CurrentAccountDep, db: DbSessionDep
+) -> RendezvousRead:
+    return travel_times.get_rendezvous(db, meetup_id, account.id)
 
 
 @router.post(

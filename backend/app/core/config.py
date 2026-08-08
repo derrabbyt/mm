@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_jwt_audience: str = "authenticated"
 
+    dataset_dir: Path = BACKEND_DIR / "app" / "data" / "output_dev" / "vienna_v1_h3r9"
+
     @property
     def supabase_issuer(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/auth/v1"

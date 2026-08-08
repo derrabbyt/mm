@@ -1,0 +1,222 @@
+{
+  "format_version": 1,
+  "city": "vienna",
+  "grid_version": "v1_h3r9",
+  "built_at": "2026-08-07T19:11:01Z",
+  "grid": {
+    "file": "grid.json",
+    "sha256": "1d7552dd265ab0c135eea05c98b056d96a97d8abb3def299a98a6eb511505221",
+    "n_cells": 663,
+    "grid_shape": "hex"
+  },
+  "sources": {
+    "osm": {
+      "path": "data/osm/vienna.osm.pbf",
+      "sha256": "be806fd74484c43d910c128b56d4af1c00320dedde3f8d429767af1af227d9e5",
+      "sha256_short": "be806fd7",
+      "size_bytes": 100663540
+    },
+    "gtfs": {
+      "path": "data/wl.zip",
+      "sha256": "e87483c5527bc061dccc4dd2d7a42863f6600503337411535e4842b7c12e2c01",
+      "sha256_short": "e87483c5",
+      "size_bytes": 51033021
+    }
+  },
+  "matrix_conventions": {
+    "dtype": "uint16",
+    "unit": "seconds",
+    "max_seconds": 3600,
+    "unreachable_sentinel": 65535,
+    "layout": "row-major; M[origin_cell, :] contiguous",
+    "aggregation_default": {
+      "kind": "percentile",
+      "percentiles": [
+        50
+      ]
+    }
+  },
+  "matrices": {
+    "walk": {
+      "file": "walk__5db3705889f1.npy",
+      "build_hash": "5db3705889f1",
+      "build_inputs": {
+        "format_version": 1,
+        "profile_version": 1,
+        "engine": "r5py",
+        "engine_version": "1.1.7",
+        "grid_version": "v1_h3r9",
+        "mode": "walk",
+        "max_seconds": 3600,
+        "snap_to_network": true,
+        "percentiles": [
+          50
+        ],
+        "osm_sha256": "be806fd74484c43d910c128b56d4af1c00320dedde3f8d429767af1af227d9e5",
+        "gtfs_sha256": null,
+        "departure": null,
+        "departure_window_min": null
+      },
+      "shape": [
+        663,
+        663
+      ],
+      "wall_seconds": 23.9,
+      "aggregation": {
+        "kind": "percentile",
+        "percentiles": [
+          50
+        ]
+      },
+      "coverage_pct": 29.34,
+      "min_seconds": 0,
+      "max_seconds": 3600
+    },
+    "bike": {
+      "file": "bike__750df156421d.npy",
+      "build_hash": "750df156421d",
+      "build_inputs": {
+        "format_version": 1,
+        "profile_version": 1,
+        "engine": "r5py",
+        "engine_version": "1.1.7",
+        "grid_version": "v1_h3r9",
+        "mode": "bike",
+        "max_seconds": 3600,
+        "snap_to_network": true,
+        "percentiles": [
+          50
+        ],
+        "osm_sha256": "be806fd74484c43d910c128b56d4af1c00320dedde3f8d429767af1af227d9e5",
+        "gtfs_sha256": null,
+        "departure": null,
+        "departure_window_min": null
+      },
+      "shape": [
+        663,
+        663
+      ],
+      "wall_seconds": 140.7,
+      "aggregation": {
+        "kind": "percentile",
+        "percentiles": [
+          50
+        ]
+      },
+      "coverage_pct": 95.74,
+      "min_seconds": 0,
+      "max_seconds": 3600
+    },
+    "car": {
+      "file": "car__c8ceb52bcbf7.npy",
+      "build_hash": "c8ceb52bcbf7",
+      "build_inputs": {
+        "format_version": 1,
+        "profile_version": 1,
+        "engine": "r5py",
+        "engine_version": "1.1.7",
+        "grid_version": "v1_h3r9",
+        "mode": "car",
+        "max_seconds": 3600,
+        "snap_to_network": true,
+        "percentiles": [
+          50
+        ],
+        "osm_sha256": "be806fd74484c43d910c128b56d4af1c00320dedde3f8d429767af1af227d9e5",
+        "gtfs_sha256": null,
+        "departure": null,
+        "departure_window_min": null
+      },
+      "shape": [
+        663,
+        663
+      ],
+      "wall_seconds": 292.8,
+      "aggregation": {
+        "kind": "percentile",
+        "percentiles": [
+          50
+        ]
+      },
+      "coverage_pct": 99.05,
+      "min_seconds": 0,
+      "max_seconds": 3600
+    },
+    "transit_wed08": {
+      "file": "transit_wed08__bc1a073d22fd.npy",
+      "build_hash": "bc1a073d22fd",
+      "build_inputs": {
+        "format_version": 1,
+        "profile_version": 1,
+        "engine": "r5py",
+        "engine_version": "1.1.7",
+        "grid_version": "v1_h3r9",
+        "mode": "transit",
+        "max_seconds": 3600,
+        "snap_to_network": true,
+        "percentiles": [
+          50
+        ],
+        "osm_sha256": "be806fd74484c43d910c128b56d4af1c00320dedde3f8d429767af1af227d9e5",
+        "gtfs_sha256": "e87483c5527bc061dccc4dd2d7a42863f6600503337411535e4842b7c12e2c01",
+        "departure": "2026-08-12T08:00:00+02:00",
+        "departure_window_min": 10
+      },
+      "shape": [
+        663,
+        663
+      ],
+      "wall_seconds": 32.7,
+      "aggregation": {
+        "kind": "percentile",
+        "percentiles": [
+          50
+        ]
+      },
+      "coverage_pct": 96.57,
+      "min_seconds": 0,
+      "max_seconds": 3540,
+      "departure": "2026-08-12T08:00:00+02:00",
+      "departure_window_min": 10,
+      "timezone": "Europe/Vienna"
+    },
+    "transit_wed18": {
+      "file": "transit_wed18__99afec5c1287.npy",
+      "build_hash": "99afec5c1287",
+      "build_inputs": {
+        "format_version": 1,
+        "profile_version": 1,
+        "engine": "r5py",
+        "engine_version": "1.1.7",
+        "grid_version": "v1_h3r9",
+        "mode": "transit",
+        "max_seconds": 3600,
+        "snap_to_network": true,
+        "percentiles": [
+          50
+        ],
+        "osm_sha256": "be806fd74484c43d910c128b56d4af1c00320dedde3f8d429767af1af227d9e5",
+        "gtfs_sha256": "e87483c5527bc061dccc4dd2d7a42863f6600503337411535e4842b7c12e2c01",
+        "departure": "2026-08-12T18:00:00+02:00",
+        "departure_window_min": 10
+      },
+      "shape": [
+        663,
+        663
+      ],
+      "wall_seconds": 31.2,
+      "aggregation": {
+        "kind": "percentile",
+        "percentiles": [
+          50
+        ]
+      },
+      "coverage_pct": 96.36,
+      "min_seconds": 0,
+      "max_seconds": 3600,
+      "departure": "2026-08-12T18:00:00+02:00",
+      "departure_window_min": 10,
+      "timezone": "Europe/Vienna"
+    }
+  }
+}

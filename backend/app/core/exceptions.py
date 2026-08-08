@@ -182,6 +182,36 @@ class ParticipantCreateError(AppBaseException):
         super().__init__("Participant could not be created")
 
 
+class NoPositionedParticipantsError(AppBaseException):
+    code = "no_positioned_participants"
+    status = 422
+
+    def __init__(self):
+        super().__init__("No participant has a position set")
+
+
+class ParticipantOffGridError(AppBaseException):
+    code = "participant_off_grid"
+    status = 422
+
+    def __init__(self, participant_name: str):
+        super().__init__(
+            f"{participant_name} is outside the area the travel times cover"
+        )
+
+
+class RendezvousInfeasibleError(AppBaseException):
+    code = "rendezvous_infeasible"
+    status = 422
+
+    def __init__(self, participant_names: list[str], max_minutes: int):
+        stranded = ", ".join(participant_names)
+        super().__init__(
+            f"No spot is within {max_minutes} minutes of everyone: {stranded} "
+            f"cannot reach any candidate in time"
+        )
+
+
 class AccountUpsertError(AppBaseException):
     code = "account_upsert_error"
     status = 503

@@ -11,7 +11,9 @@
     [ngModel]="newName()"
     (ngModelChange)="newName.set($event)"
   />
-  <button type="submit" class="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700">Add</button>
+  <button type="submit" class="rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700">
+    Add
+  </button>
 </form>
 
 <ul class="mt-4 flex flex-col gap-2">
@@ -39,4 +41,58 @@
       [color]="participant.id === selectedId() ? '#0090ff' : '#30a46c'"
     />
   }
+
+  @if (rendezvous(); as spot) {
+    <mgl-marker
+      [lngLat]="[spot.position.longitude, spot.position.latitude]"
+      [color]="rendezvousColor"
+    />
+  }
 </mgl-map>
+
+@if (rendezvous(); as spot) {
+  <section class="mt-4 rounded border border-purple-300 bg-purple-50 p-3">
+    <h2 class="flex items-center gap-2 font-semibold">
+      <span class="inline-block h-3 w-3 rounded-full" [style.background]="rendezvousColor"></span>
+      Rendezvous point
+    </h2>
+
+    <p class="mt-1 text-sm">
+      Everyone gets there within <strong>{{ worstMinutes() }} min</strong>, leaving around the
+      meetup time.
+    </p>
+
+    <ul class="mt-2 flex flex-col gap-0.5 text-sm">
+      @for (entry of travelTimes(); track entry.id) {
+        <li>{{ entry.name }} — {{ entry.minutes }} min by {{ entry.travelMode }}</li>
+      }
+    </ul>
+
+    <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 text-xs text-gray-600">
+      <dt>Position</dt>
+      <dd>
+        {{ spot.position.latitude | number: '1.5-5' }},
+        {{ spot.position.longitude | number: '1.5-5' }}
+      </dd>
+
+      <dt>Grid cell</dt>
+      <dd>{{ spot.cell_id }}</dd>
+
+      @if (spot.transit_key_used) {
+        <dt>Transit schedule</dt>
+        <dd>{{ spot.transit_key_used }} (typical, median departure)</dd>
+      }
+
+      @if (excludedNames().length) {
+        <dt>Not counted</dt>
+        <dd>{{ excludedNames().join(', ') }} — no location set yet</dd>
+      }
+    </dl>
+  </section>
+}
+
+@if (rendezvousError(); as message) {
+  <p class="mt-4 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+    {{ message }}
+  </p>
+}
