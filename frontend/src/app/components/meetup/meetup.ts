@@ -39,6 +39,7 @@ export class Meetup {
   readonly rendezvousError = this.meetups.rendezvousError;
   readonly travelTimes = this.meetups.travelTimes;
   readonly excludedNames = this.meetups.excludedNames;
+  readonly addressLabels = this.meetups.addressLabels;
 
   readonly newName = signal('');
 
@@ -79,7 +80,7 @@ export class Meetup {
   }
 
   setParticipantLocation(location: ParticipantLocation) {
-    this.meetups.setParticipantPosition(location.id, location.position);
+    this.meetups.setParticipantPosition(location.id, location.position, location.label);
   }
 
   onMapClick(event: MapMouseEvent) {

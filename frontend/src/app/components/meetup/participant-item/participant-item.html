@@ -25,6 +25,14 @@
     Pick Location
   </button>
 
+  <button
+    type="button"
+    class="rounded border border-gray-300 px-2 py-1 hover:bg-gray-100"
+    (click)="useMyLocation()"
+  >
+    Use my location
+  </button>
+
   <select
     name="travelMode"
     class="rounded border border-gray-300 px-2 py-1"
@@ -44,6 +52,10 @@
       (picked)="setLocationFromAddress($event)"
     />
   </div>
+
+  @if (geoStatus(); as status) {
+    <span class="text-sm text-gray-600">{{ status }}</span>
+  }
 
   @if (participant().position; as position) {
     <span class="text-sm text-gray-600">

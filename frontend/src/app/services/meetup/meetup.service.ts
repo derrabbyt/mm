@@ -8,16 +8,21 @@ import { UpdateParticipantRequest } from '../../open-api/model/update-participan
 import { Position } from '../../open-api/model/position';
 import { RendezvousRead } from '../../open-api/model/rendezvous-read';
 import { TravelMode } from '../../open-api/model/travel-mode';
+import { PhotonService } from '../photon/photon.service';
 import { Router } from '@angular/router';
 
 /** Below this the answer is either trivial or rejected, so we don't ask. */
 const MIN_PLACED_FOR_RENDEZVOUS = 2;
+
+/** Shown while the reverse lookup is in flight, and left in place if it fails. */
+const UNNAMED_LOCATION = 'Dropped pin';
 
 @Injectable({
   providedIn: 'root',
 })
 export class MeetupService {
   private api = inject(MeetupsApi);
+  private photon = inject(PhotonService);
   private router = inject(Router);
 
   private readonly _meetups = signal<MeetupRead[]>([]);
@@ -27,6 +32,10 @@ export class MeetupService {
   private readonly _selectedId = signal<string | null>(null);
   private readonly _rendezvous = signal<RendezvousRead | null>(null);
   private readonly _rendezvousError = signal<string | null>(null);
+  /** Participant id -> human-readable place. Display only, never sent to the
+   *  API, and only filled for locations set during this session - reverse
+   *  geocoding every participant on load would hammer Photon. */
+  private readonly _addressLabels = signal<Record<string, string>>({});
 
   readonly meetups = this._meetups.asReadonly();
   readonly meetup = this._meetup.asReadonly();
@@ -34,6 +43,7 @@ export class MeetupService {
   readonly selectedId = this._selectedId.asReadonly();
   readonly rendezvous = this._rendezvous.asReadonly();
   readonly rendezvousError = this._rendezvousError.asReadonly();
+  readonly addressLabels = this._addressLabels.asReadonly();
 
   readonly selected = computed(
     () => this._participants().find((p) => p.id === this._selectedId()) ?? null,
@@ -77,6 +87,7 @@ export class MeetupService {
     this._selectedId.set(null);
     this._rendezvous.set(null);
     this._rendezvousError.set(null);
+    this._addressLabels.set({});
 
     this.api.getMeetup({ meetupId }).subscribe({
       next: (meetup) => {
@@ -114,20 +125,41 @@ export class MeetupService {
     this.update(id, { name, travel_mode: travelMode });
   }
 
+  /** Place the selected participant, e.g. from a map click. */
   placeParticipant(position: Position) {
     const selected = this.selected();
     if (selected) {
-      this.update(selected.id, { position });
+      this.setParticipantPosition(selected.id, position);
     }
   }
 
-  /** Set one participant's position directly, e.g. from an address search. */
-  setParticipantPosition(id: string, position: Position) {
+  /**
+   * Set one participant's position. Pass `label` when the caller already knows
+   * what the place is called - picking it from the address search - otherwise
+   * the name is looked up from the coordinates.
+   */
+  setParticipantPosition(id: string, position: Position, label?: string) {
     this.update(id, { position });
+
+    if (label) {
+      this.setAddressLabel(id, label);
+      return;
+    }
+
+    this.setAddressLabel(id, UNNAMED_LOCATION);
+    this.photon.reverse(position, { lang: 'de' }).subscribe({
+      next: (place) => place && this.setAddressLabel(id, place.label),
+      // The position is already saved, so a failed lookup costs only the name.
+      error: (err) => console.error('[meetup] reverse geocoding failed', err),
+    });
   }
 
   selectParticipant(id: string | null) {
     this._selectedId.set(id);
+  }
+
+  private setAddressLabel(id: string, label: string) {
+    this._addressLabels.update((labels) => ({ ...labels, [id]: label }));
   }
 
   private update(id: string, changes: Partial<UpdateParticipantRequest>) {
