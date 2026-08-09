@@ -1,15 +1,4 @@
-"""Optimal rendezvous spots from a baked travel-time dataset.
-
-A dataset is one self-contained `<city>_<grid_version>` folder holding
-`manifest.json`, `grid.json` and the matrices the manifest points at. Two rules
-keep this code portable across cities and grid versions: the manifest is the
-only directory (never scan the folder), and `grid.json` is frozen for the
-lifetime of the folder.
-
-Matrix values are seconds as `uint16`, capped at `max_seconds`; anything slower
-is written as `UNREACHABLE` and carries no information about how much slower.
-See `app/data/ttm_backend_integration.md`.
-"""
+"""Optimal rendezvous spots from a baked travel-time dataset."""
 
 import json
 import logging
@@ -41,12 +30,19 @@ SUPPORTED_FORMAT_VERSION = 1
 UNREACHABLE = 65535
 FALLBACK_TIMEZONE = "Europe/Vienna"
 
-# Departure hour -> matrix key, per class of day. No weekend matrices have been
-# baked yet, so the weekend table deliberately points at the Wednesday ones -
-# a Saturday meetup silently gets Wednesday travel times. Once transit_sat* is
-# baked, swapping the values here is the only change needed.
-WEEKDAY_TRANSIT_KEYS = {8: "transit_wed08", 18: "transit_wed18"}
-WEEKEND_TRANSIT_KEYS = {8: "transit_wed08", 18: "transit_wed18"}
+MINUTES_PER_DAY = 24 * 60
+
+# Departure hour -> matrix key, per class of day. Saturday and Sunday get their
+# own tables even though the current bake wrote them byte-identical, so a real
+# Sunday schedule later needs no change here.
+WEEKDAY_TRANSIT_KEYS = {
+    8: "transit_wed08",
+    12: "transit_wed12",
+    18: "transit_wed18",
+    22: "transit_wed22",
+}
+SATURDAY_TRANSIT_KEYS = {10: "transit_sat10", 14: "transit_sat14", 20: "transit_sat20"}
+SUNDAY_TRANSIT_KEYS = {10: "transit_sun10", 14: "transit_sun14", 20: "transit_sun20"}
 
 # Modes served by a single, time-independent matrix.
 STATIC_MATRIX_KEYS = {
@@ -83,6 +79,7 @@ class Dataset:
         )
 
         self.matrices: dict[str, np.ndarray] = {}
+        self.max_seconds: dict[str, int] = {}
         for key, entry in self.manifest["matrices"].items():
             matrix = np.load(folder / entry["file"], mmap_mode="r")
             if list(matrix.shape) != [self.n_cells, self.n_cells]:
@@ -90,8 +87,7 @@ class Dataset:
                     f"{key} shape {matrix.shape} != ({self.n_cells}, {self.n_cells})"
                 )
             self.matrices[key] = matrix
-
-        self.max_seconds = self.manifest["matrix_conventions"]["max_seconds"]
+            self.max_seconds[key] = entry["max_seconds"]
         self.timezone = ZoneInfo(
             next(
                 (
@@ -128,9 +124,23 @@ def pick_transit_key(when: datetime) -> str:
         when = when.replace(tzinfo=dataset.timezone)
     local = when.astimezone(dataset.timezone)
 
-    table = WEEKEND_TRANSIT_KEYS if local.weekday() >= 5 else WEEKDAY_TRANSIT_KEYS
+    weekday = local.weekday()
+    if weekday == 5:
+        table = SATURDAY_TRANSIT_KEYS
+    elif weekday == 6:
+        table = SUNDAY_TRANSIT_KEYS
+    else:
+        table = WEEKDAY_TRANSIT_KEYS
+
+    # Distance around the clock, so 00:30 lands on the 22:00 bake rather than
+    # the 08:00 one. The day class stays whatever the meetup's own day says.
     minutes = local.hour * 60 + local.minute
-    return min(table.items(), key=lambda item: abs(item[0] * 60 - minutes))[1]
+
+    def distance(hour: int) -> int:
+        gap = abs(hour * 60 - minutes)
+        return min(gap, MINUTES_PER_DAY - gap)
+
+    return table[min(table, key=distance)]
 
 
 def matrix_keys(mode: TravelMode, transit_key: str) -> tuple[str, ...]:
@@ -186,12 +196,18 @@ def get_rendezvous(
     seconds = times[:, best]
     if UNREACHABLE in seconds:
         stranded = [
-            participant.name
+            participant
             for participant, value in zip(positioned, seconds, strict=True)
             if value == UNREACHABLE
         ]
+        horizon = max(
+            dataset.max_seconds[key]
+            for participant in stranded
+            for key in matrix_keys(participant.travel_mode, transit_key)
+        )
         raise RendezvousInfeasibleError(
-            participant_names=stranded, max_minutes=dataset.max_seconds // 60
+            participant_names=[participant.name for participant in stranded],
+            max_minutes=horizon // 60,
         )
 
     uses_transit = any(p.travel_mode is TravelMode.TRANSIT for p in positioned)

@@ -56,3 +56,7 @@ uploads/
 tmp/
 .agents
 .claude
+
+# Baked travel-time matrices. v1 is 5 MB and already tracked; v2 covers the
+# whole bbox at 111 MB per matrix (1.4 GB total) and has to stay out of git.
+app/data/output_dev/vienna_v2_h3r9/
