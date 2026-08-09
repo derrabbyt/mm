@@ -121,6 +121,11 @@ export class MeetupService {
     }
   }
 
+  /** Set one participant's position directly, e.g. from an address search. */
+  setParticipantPosition(id: string, position: Position) {
+    this.update(id, { position });
+  }
+
   selectParticipant(id: string | null) {
     this._selectedId.set(id);
   }

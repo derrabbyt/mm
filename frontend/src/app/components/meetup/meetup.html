@@ -21,8 +21,10 @@
     <app-participant-item
       [participant]="participant"
       [selected]="participant.id === selectedId()"
+      [near]="searchNear"
       (selectRequested)="selectParticipant($event)"
       (save)="saveParticipant($event)"
+      (locationPicked)="setParticipantLocation($event)"
     />
   }
 </ul>

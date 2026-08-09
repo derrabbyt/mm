@@ -1,0 +1,38 @@
+<div class="relative">
+  <input
+    type="search"
+    name="addressQuery"
+    autocomplete="off"
+    class="w-full rounded border border-gray-300 px-2 py-1"
+    [placeholder]="placeholder()"
+    [ngModel]="query()"
+    (ngModelChange)="query.set($event); open.set(true)"
+    (focus)="open.set(true)"
+    (blur)="closeSoon()"
+  />
+
+  @if (loading()) {
+    <span class="absolute top-1.5 right-2 text-xs text-gray-400">…</span>
+  }
+
+  @if (open() && results().length) {
+    <ul
+      class="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded border border-gray-300 bg-white shadow-lg"
+    >
+      @for (place of results(); track place.key) {
+        <li>
+          <button
+            type="button"
+            class="w-full px-2 py-1 text-left hover:bg-blue-50"
+            (click)="choose(place)"
+          >
+            <span class="block text-sm">{{ place.label }}</span>
+            @if (place.context) {
+              <span class="block text-xs text-gray-500">{{ place.context }}</span>
+            }
+          </button>
+        </li>
+      }
+    </ul>
+  }
+</div>

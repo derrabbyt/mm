@@ -12,7 +12,12 @@ import { FormsModule } from '@angular/forms';
 import { NgxMapLibreGLModule } from '@maplibre/ngx-maplibre-gl';
 import type { MapMouseEvent } from 'maplibre-gl';
 import { MeetupService } from '../../services/meetup/meetup.service';
-import { ParticipantEdit, ParticipantItem } from './participant-item/participant-item';
+import {
+  ParticipantEdit,
+  ParticipantItem,
+  ParticipantLocation,
+} from './participant-item/participant-item';
+import { Position } from '../../open-api/model/position';
 
 @Component({
   selector: 'app-meetup',
@@ -49,6 +54,9 @@ export class Meetup {
   readonly center: [number, number] = [16.3738, 48.2082];
   readonly zoom: [number] = [12];
 
+  /** Address results are ranked by distance from here. */
+  readonly searchNear: Position = { latitude: this.center[1], longitude: this.center[0] };
+
   constructor() {
     effect(() => this.meetups.open(this.id()));
   }
@@ -68,6 +76,10 @@ export class Meetup {
 
   saveParticipant(edit: ParticipantEdit) {
     this.meetups.saveParticipant(edit.id, edit.name, edit.travelMode);
+  }
+
+  setParticipantLocation(location: ParticipantLocation) {
+    this.meetups.setParticipantPosition(location.id, location.position);
   }
 
   onMapClick(event: MapMouseEvent) {

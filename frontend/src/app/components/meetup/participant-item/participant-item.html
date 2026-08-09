@@ -36,8 +36,20 @@
     }
   </select>
 
+  <div class="w-64">
+    <app-address-search
+      placeholder="Address, business, …"
+      lang="de"
+      [near]="near()"
+      (picked)="setLocationFromAddress($event)"
+    />
+  </div>
+
   @if (participant().position; as position) {
     <span class="text-sm text-gray-600">
+      @if (addressLabel(); as label) {
+        {{ label }} —
+      }
       {{ position.latitude | number: '1.5-5' }}, {{ position.longitude | number: '1.5-5' }}
     </span>
   }
