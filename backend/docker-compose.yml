@@ -32,6 +32,25 @@ services:
             interval: 5s
             timeout: 5s
             retries: 10
+    photon:
+        image: rtuszik/photon-docker:latest
+        restart: unless-stopped
+        container_name: photon
+        environment:
+            REGION: at
+            UPDATE_STRATEGY: DISABLED
+            MIN_INDEX_DATE: ""
+            UV_NO_SYNC: "1"
+        ports:
+            - '${PHOTON_PORT:?}:2322'
+        volumes:
+            - ${PHOTON_DATA_DIR:-./data/photon}:/photon/data
+        healthcheck:
+            test: ["CMD", "curl", "-fsS", "http://localhost:2322/status"]
+            interval: 10s
+            timeout: 5s
+            retries: 30
+            start_period: 60s
 
 volumes:
   postgres_data:

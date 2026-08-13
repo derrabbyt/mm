@@ -84,14 +84,6 @@ function toPlace(feature: PhotonFeature, index: number): PhotonPlace {
   };
 }
 
-/**
- * Geocoding against Photon (photon.komoot.io), which is OSM-based and free for
- * commercial use. The base URL is configurable so a self-hosted instance is a
- * config change rather than a code change.
- *
- * Note this deliberately uses plain HttpClient rather than the generated API
- * client, so no Supabase bearer token is ever attached to a third-party request.
- */
 @Injectable({ providedIn: 'root' })
 export class PhotonService {
   private http = inject(HttpClient);
