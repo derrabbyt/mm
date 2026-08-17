@@ -3,6 +3,7 @@ import { Observable, switchMap } from 'rxjs';
 import { MeetupsService as MeetupsApi } from '../../open-api/api/meetups.service';
 import { CreateMeetupRequest } from '../../open-api/model/create-meetup-request';
 import { MeetupRead } from '../../open-api/model/meetup-read';
+import { EventRead } from '../../open-api/model/event-read';
 import { MeetupParticipantRead } from '../../open-api/model/meetup-participant-read';
 import { UpdateParticipantRequest } from '../../open-api/model/update-participant-request';
 import { Position } from '../../open-api/model/position';
@@ -16,6 +17,11 @@ const MIN_PLACED_FOR_RENDEZVOUS = 2;
 
 /** Shown while the reverse lookup is in flight, and left in place if it fails. */
 const UNNAMED_LOCATION = 'Dropped pin';
+
+/** How far around the rendezvous point to look for events. Sent explicitly
+ *  rather than left to the backend default, so the circle drawn on the map is
+ *  guaranteed to be the area that was actually searched. */
+const EVENT_RADIUS_METERS = 1000;
 
 @Injectable({
   providedIn: 'root',
@@ -32,6 +38,9 @@ export class MeetupService {
   private readonly _selectedId = signal<string | null>(null);
   private readonly _rendezvous = signal<RendezvousRead | null>(null);
   private readonly _rendezvousError = signal<string | null>(null);
+  /** Scraped events near the rendezvous point, nearest first. Empty until
+   *  there is a rendezvous to search around. */
+  private readonly _events = signal<EventRead[]>([]);
   /** Participant id -> human-readable place. Display only, never sent to the
    *  API, and only filled for locations set during this session - reverse
    *  geocoding every participant on load would hammer Photon. */
@@ -43,6 +52,8 @@ export class MeetupService {
   readonly selectedId = this._selectedId.asReadonly();
   readonly rendezvous = this._rendezvous.asReadonly();
   readonly rendezvousError = this._rendezvousError.asReadonly();
+  readonly events = this._events.asReadonly();
+  readonly eventRadiusMeters = EVENT_RADIUS_METERS;
   readonly addressLabels = this._addressLabels.asReadonly();
 
   readonly selected = computed(
@@ -87,6 +98,7 @@ export class MeetupService {
     this._selectedId.set(null);
     this._rendezvous.set(null);
     this._rendezvousError.set(null);
+    this._events.set([]);
     this._addressLabels.set({});
 
     this.api.getMeetup({ meetupId }).subscribe({
@@ -206,6 +218,7 @@ export class MeetupService {
     if (!meetupId || this.placed().length < MIN_PLACED_FOR_RENDEZVOUS) {
       this._rendezvous.set(null);
       this._rendezvousError.set(null);
+      this._events.set([]);
       return;
     }
 
@@ -213,13 +226,50 @@ export class MeetupService {
       next: (rendezvous) => {
         this._rendezvous.set(rendezvous);
         this._rendezvousError.set(null);
+        this.loadEvents(meetupId);
       },
       error: (err) => {
         // 422s are expected here - someone off the grid, or nobody reachable
         // within the hour the matrices cover - and the envelope explains which.
         this._rendezvous.set(null);
         this._rendezvousError.set(err?.error?.message ?? 'No rendezvous spot could be found');
+        this._events.set([]);
       },
     });
+  }
+
+  /** Only ever called with a rendezvous in hand - the backend recomputes the
+   *  same spot and searches around it. */
+  private loadEvents(meetupId: string) {
+    this.api.getRendezvousEvents({ meetupId, radiusMeters: EVENT_RADIUS_METERS }).subscribe({
+      next: (events) => {
+        this._events.set(events);
+        this.fillMissingAddresses(events);
+      },
+      // Events are a bonus next to the rendezvous itself, so a failure here
+      // just leaves the list empty rather than surfacing an error.
+      error: (err) => {
+        console.error('[meetup] loading nearby events failed', err);
+        this._events.set([]);
+      },
+    });
+  }
+
+  /** The scraper often has coordinates but no street, so ask Photon what is at
+   *  the point. One request per gap, against our own instance, capped by the
+   *  page size the backend returns. */
+  private fillMissingAddresses(events: EventRead[]) {
+    for (const event of events.filter((candidate) => !candidate.address)) {
+      this.photon.reverse(event.position, { lang: 'de' }).subscribe({
+        next: (place) => place && this.setEventAddress(event.id, place.label),
+        error: (err) => console.error('[meetup] event reverse geocoding failed', err),
+      });
+    }
+  }
+
+  private setEventAddress(id: number, address: string) {
+    this._events.update((events) =>
+      events.map((event) => (event.id === id ? { ...event, address } : event)),
+    );
   }
 }

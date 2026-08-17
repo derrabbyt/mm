@@ -38,6 +38,22 @@
   cursorStyle="crosshair"
   (mapClick)="onMapClick($event)"
 >
+  @if (searchArea(); as area) {
+    <mgl-geojson-source id="search-area" [data]="area" />
+    <mgl-layer
+      id="search-area-fill"
+      type="fill"
+      source="search-area"
+      [paint]="{ 'fill-color': eventColor, 'fill-opacity': 0.08 }"
+    />
+    <mgl-layer
+      id="search-area-outline"
+      type="line"
+      source="search-area"
+      [paint]="{ 'line-color': eventColor, 'line-opacity': 0.6, 'line-width': 1 }"
+    />
+  }
+
   @for (participant of placed(); track participant.id) {
     <mgl-marker
       [lngLat]="[participant.position!.longitude, participant.position!.latitude]"
@@ -50,6 +66,18 @@
       [lngLat]="[spot.position.longitude, spot.position.latitude]"
       [color]="rendezvousColor"
     />
+  }
+
+  @for (event of events(); track event.id) {
+    <mgl-marker [lngLat]="[event.position.longitude, event.position.latitude]">
+      <!-- Projected content replaces the default pin; `title` is the browser's
+           own hover tooltip, so there is no popup to wire up. -->
+      <div
+        class="h-3 w-3 rounded-full border border-white"
+        [style.background]="eventColor"
+        [title]="event.title"
+      ></div>
+    </mgl-marker>
   }
 </mgl-map>
 
@@ -91,6 +119,80 @@
         <dd>{{ excludedNames().join(', ') }} — no location set yet</dd>
       }
     </dl>
+  </section>
+}
+
+@if (rendezvous()) {
+  <section class="mt-4">
+    <h2 class="flex items-center gap-2 font-semibold">
+      <span class="inline-block h-3 w-3 rounded-full" [style.background]="eventColor"></span>
+      Events on the day of the meetup
+    </h2>
+
+    <p class="text-xs text-gray-600">
+      Within {{ eventRadiusMeters }} m of the rendezvous point — the circle on the map.
+    </p>
+
+    @if (!events().length) {
+      <p class="mt-2 text-sm text-gray-600">Nothing scheduled nearby that day.</p>
+    }
+
+    <ul class="mt-2 flex flex-col gap-2">
+      @for (event of events(); track event.id) {
+        <li class="flex gap-3 rounded border border-gray-300 p-3">
+          @if (event.image_url) {
+            <!-- Hotlinked from the source, so `alt` stays empty (the title is
+                 right there) and a dead URL hides itself rather than leaving a
+                 broken-image icon. -->
+            <img
+              class="h-20 w-28 shrink-0 rounded object-cover"
+              [src]="event.image_url"
+              alt=""
+              loading="lazy"
+              referrerpolicy="no-referrer"
+              (error)="hideBrokenImage($event)"
+            />
+          }
+
+          <div class="min-w-0">
+            <h3 class="font-medium">
+              @if (event.origin_url) {
+                <a
+                  class="text-blue-700 underline"
+                  [href]="event.origin_url"
+                  target="_blank"
+                  rel="noopener"
+                  >{{ event.title }}</a
+                >
+              } @else {
+                {{ event.title }}
+              }
+            </h3>
+
+            <p class="text-sm text-gray-600">
+              {{ event.starts_at | date: 'EEE d MMM y' }}
+              <!-- All-day events carry a midnight start that means nothing. -->
+              @if (!event.all_day) {
+                — {{ event.starts_at | date: 'HH:mm' }}
+              }
+            </p>
+
+            <p class="text-sm">
+              {{ event.venue_name ?? 'Unknown venue' }}
+              @if (event.address) {
+                <span class="text-gray-600">— {{ event.address }}</span>
+              }
+            </p>
+
+            <p class="text-xs text-gray-600">{{ event.distance_meters }} m away</p>
+
+            @if (event.description) {
+              <p class="mt-1 text-sm">{{ event.description }}</p>
+            }
+          </div>
+        </li>
+      }
+    </ul>
   </section>
 }
 

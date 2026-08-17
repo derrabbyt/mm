@@ -1,8 +1,11 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query
 
 from ..core.exceptions import (
     AccountNotFoundError,
     AccountUpsertError,
+    EventsLoadError,
     InvalidBearerTokenError,
     MeetupCreateError,
     MeetupLoadError,
@@ -23,6 +26,7 @@ from ..core.exceptions import (
     responses,
 )
 from ..db.session import DbSessionDep
+from ..schemas.event import EventRead
 from ..schemas.meetup import CreateMeetupRequest, MeetupRead
 from ..schemas.participant import (
     AddParticipantRequest,
@@ -30,7 +34,7 @@ from ..schemas.participant import (
     UpdateParticipantRequest,
 )
 from ..schemas.rendezvous import RendezvousRead
-from ..services import meetups, participants, travel_times
+from ..services import events, meetups, participants, travel_times
 from ..services.accounts import CurrentAccountDep
 
 AUTH_ERRORS = (
@@ -109,6 +113,33 @@ def get_rendezvous(
     meetup_id: str, account: CurrentAccountDep, db: DbSessionDep
 ) -> RendezvousRead:
     return travel_times.get_rendezvous(db, meetup_id, account.id)
+
+
+@router.get(
+    "/{meetup_id}/rendezvous/events",
+    operation_id="getRendezvousEvents",
+    responses=responses(
+        *AUTH_ERRORS,
+        MeetupNotFoundError,
+        MeetupLoadError,
+        ParticipantsLoadError,
+        NoPositionedParticipantsError,
+        ParticipantOffGridError,
+        RendezvousInfeasibleError,
+        EventsLoadError,
+        ValidationError,
+    ),
+)
+def get_rendezvous_events(
+    meetup_id: str,
+    account: CurrentAccountDep,
+    db: DbSessionDep,
+    radius_meters: Annotated[int, Query(ge=100, le=10_000)] = (
+        events.DEFAULT_RADIUS_METERS
+    ),
+    limit: Annotated[int, Query(ge=1, le=100)] = events.DEFAULT_LIMIT,
+) -> list[EventRead]:
+    return events.get_rendezvous_events(db, meetup_id, account.id, radius_meters, limit)
 
 
 @router.post(

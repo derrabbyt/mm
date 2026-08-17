@@ -212,6 +212,14 @@ class RendezvousInfeasibleError(AppBaseException):
         )
 
 
+class EventsLoadError(AppBaseException):
+    code = "events_load_error"
+    status = 503
+
+    def __init__(self):
+        super().__init__("Events could not be loaded")
+
+
 class AccountUpsertError(AppBaseException):
     code = "account_upsert_error"
     status = 503

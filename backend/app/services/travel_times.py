@@ -118,11 +118,17 @@ logger.info(
 )
 
 
-def pick_transit_key(when: datetime) -> str:
-    """Matrix whose departure best matches `when`, in the dataset's timezone."""
+def to_local(when: datetime) -> datetime:
+    """`when` in the dataset's timezone. A naive value is read as already local,
+    since the only way to get one here is a column that dropped its offset."""
     if when.tzinfo is None:
         when = when.replace(tzinfo=dataset.timezone)
-    local = when.astimezone(dataset.timezone)
+    return when.astimezone(dataset.timezone)
+
+
+def pick_transit_key(when: datetime) -> str:
+    """Matrix whose departure best matches `when`, in the dataset's timezone."""
+    local = to_local(when)
 
     weekday = local.weekday()
     if weekday == 5:

@@ -20,12 +20,38 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+# THIS IS SHIT AND NEEDS TO GO SOON WHEN WE MERGE IT FROM MICROSERVICE TO SHARED MODULAR MONOLITH
+
+# Tables written by the activity-loader event scraper, which shares this database
+# and manages its own schema. They are not in Base.metadata, so autogenerate would
+# emit a DROP for every one of them. Keep in sync with that project's store.py.
+SCRAPER_TABLES = frozenset(
+    {
+        "events",
+        "occurrences",
+        "cards",
+        "dedup_members",
+        "venue_links",
+        "geocode_cache",
+        "quarantine",
+        "source_runs",
+        "alert_state",
+        "eventloader_meta",
+    }
+)
+
+
 def include_object(
     object: SchemaItem, name: str | None, type_: str, reflected: bool, compare_to: Any
 ) -> bool:
-    """spatial_ref_sys is a real public-schema table installed by PostGIS, so
-    pinning search_path (below) does not hide it from reflection."""
-    return not (type_ == "table" and name == "spatial_ref_sys")
+    """Hide tables this project does not own from autogenerate.
+
+    spatial_ref_sys is a real public-schema table installed by PostGIS, so pinning
+    search_path (below) does not hide it from reflection. The scraper's tables are
+    the same problem from a different direction: another writer owns them.
+    """
+    foreign = name == "spatial_ref_sys" or name in SCRAPER_TABLES
+    return not (type_ == "table" and foreign)
 
 
 def run_migrations_offline() -> None:
