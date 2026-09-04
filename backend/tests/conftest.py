@@ -10,11 +10,11 @@ from redis_fastapi import get_async_redis
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.api.main import app
 from app.db.session import engine, get_db
-from app.main import app
-from app.models.account import Account
-from app.models.meetup import Meetup
-from app.services.accounts import get_current_account
+from app.modules.accounts.models import Account
+from app.modules.accounts.service import get_current_account
+from app.modules.meetups.models import Meetup
 
 
 class BrokenSession:

@@ -228,6 +228,17 @@ class AccountUpsertError(AppBaseException):
         super().__init__("Account could not be loaded or created")
 
 
+# Everything that can go wrong resolving the caller, before an authenticated
+# endpoint's own body ever runs. Every router that takes CurrentAccountDep
+# spreads this into its `responses=`.
+AUTH_ERRORS = (
+    MissingBearerTokenError,
+    InvalidBearerTokenError,
+    UnauthenticatedRoleError,
+    AccountUpsertError,
+)
+
+
 def default_responses() -> dict[int | str, dict[str, Any]]:
     return responses(
         ValidationError,

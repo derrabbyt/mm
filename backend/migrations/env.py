@@ -5,10 +5,10 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 from sqlalchemy.schema import SchemaItem
 
-# app.models is imported for the side effect of registering every model on
+# app.metadata is imported for the side effect of registering every model on
 # Base.metadata. Without it autogenerate sees empty metadata and emits a DROP
 # for each table.
-from app import models  # noqa: F401
+from app import metadata  # noqa: F401
 from app.core.config import settings
 from app.db.base import Base
 
@@ -20,11 +20,10 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
-# THIS IS SHIT AND NEEDS TO GO SOON WHEN WE MERGE IT FROM MICROSERVICE TO SHARED MODULAR MONOLITH
-
 # Tables written by the activity-loader event scraper, which shares this database
 # and manages its own schema. They are not in Base.metadata, so autogenerate would
 # emit a DROP for every one of them. Keep in sync with that project's store.py.
+# Goes away once activity-loader moves in and these tables get real models.
 SCRAPER_TABLES = frozenset(
     {
         "events",

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.exc import OperationalError
 
+from app.core.contracts import Position
 from app.core.exceptions import (
     AccountNotFoundError,
     AppBaseException,
@@ -18,12 +19,14 @@ from app.core.exceptions import (
     ParticipantUpdateError,
     responses,
 )
-from app.models.account import Account
-from app.models.meetup_participant import MeetupParticipant
-from app.schemas.meetup import CreateMeetupRequest
-from app.schemas.participant import AddParticipantRequest, UpdateParticipantRequest
-from app.schemas.position import Position
-from app.services import meetups, participants
+from app.modules.accounts.models import Account
+from app.modules.meetups import service as meetups
+from app.modules.meetups.models import MeetupParticipant
+from app.modules.meetups.schemas import (
+    AddParticipantRequest,
+    CreateMeetupRequest,
+    UpdateParticipantRequest,
+)
 
 STORAGE_ERRORS = [
     MeetupLoadError,
@@ -191,12 +194,12 @@ def test_error_schema_names_are_unique():
 
 def test_get_participant_raises_not_found_for_missing_id(db, meetup, account):
     with pytest.raises(ParticipantNotFoundError):
-        participants.get_participant(db, str(meetup.id), str(uuid.uuid4()), account.id)
+        meetups.get_participant(db, str(meetup.id), str(uuid.uuid4()), account.id)
 
 
 def test_update_participant_raises_not_found_for_missing_id(db, meetup, account):
     with pytest.raises(ParticipantNotFoundError):
-        participants.update_participant(
+        meetups.update_participant(
             db, str(meetup.id), str(uuid.uuid4()), account.id, _update_request()
         )
 
@@ -204,17 +207,17 @@ def test_update_participant_raises_not_found_for_missing_id(db, meetup, account)
 def test_get_participant_rejects_a_malformed_id_as_not_found(db, meetup, account):
     """A non-UUID id is just as absent as an unknown one - same 404, not a 500."""
     with pytest.raises(ParticipantNotFoundError):
-        participants.get_participant(db, str(meetup.id), "not-a-uuid", account.id)
+        meetups.get_participant(db, str(meetup.id), "not-a-uuid", account.id)
 
 
 def test_missing_meetup_reads_as_not_found(db, account):
     with pytest.raises(MeetupNotFoundError):
-        participants.get_participants(db, str(uuid.uuid4()), account.id)
+        meetups.get_participants(db, str(uuid.uuid4()), account.id)
 
 
 def test_malformed_meetup_id_reads_as_not_found(db, account):
     with pytest.raises(MeetupNotFoundError):
-        participants.get_participants(db, "not-a-uuid", account.id)
+        meetups.get_participants(db, "not-a-uuid", account.id)
 
 
 # --- ownership --------------------------------------------------------------
@@ -228,12 +231,12 @@ def test_another_accounts_meetup_is_not_found(db, meetup):
 
 
 def test_participants_of_another_accounts_meetup_are_not_found(db, meetup, account):
-    participants.add_participant(
+    meetups.add_participant(
         db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
     )
 
     with pytest.raises(MeetupNotFoundError):
-        participants.get_participants(db, str(meetup.id), uuid.uuid4())
+        meetups.get_participants(db, str(meetup.id), uuid.uuid4())
 
 
 def test_get_meetups_only_returns_your_own(db, meetup, account):
@@ -268,14 +271,14 @@ def test_get_meetup_translates_db_failure():
 
 def test_get_participants_translates_db_failure(meetup, account):
     with pytest.raises(ParticipantsLoadError):
-        participants.get_participants(
+        meetups.get_participants(
             MeetupFoundThenBoomSession(meetup), str(meetup.id), account.id
         )
 
 
 def test_get_participant_translates_db_failure(meetup, account):
     with pytest.raises(ParticipantLoadError) as info:
-        participants.get_participant(
+        meetups.get_participant(
             MeetupFoundThenBoomSession(meetup),
             str(meetup.id),
             str(uuid.uuid4()),
@@ -286,7 +289,7 @@ def test_get_participant_translates_db_failure(meetup, account):
 
 def test_add_participant_translates_db_failure(meetup, account):
     with pytest.raises(ParticipantCreateError):
-        participants.add_participant(
+        meetups.add_participant(
             MeetupFoundThenBoomSession(meetup),
             str(meetup.id),
             account.id,
@@ -299,7 +302,7 @@ def test_update_participant_translates_db_failure(meetup, account):
         id=uuid.uuid4(), meetup_id=meetup.id, name="Ada", travel_mode="transit"
     )
     with pytest.raises(ParticipantUpdateError):
-        participants.update_participant(
+        meetups.update_participant(
             MeetupFoundThenBoomSession(meetup, existing),
             str(meetup.id),
             str(existing.id),
@@ -321,12 +324,12 @@ def _second_account(db) -> uuid.UUID:
 
 
 def test_participant_can_be_linked_to_an_account_after_creation(db, meetup, account):
-    added = participants.add_participant(
+    added = meetups.add_participant(
         db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
     )
     assert added.account_id is None
 
-    linked = participants.update_participant(
+    linked = meetups.update_participant(
         db,
         str(meetup.id),
         str(added.id),
@@ -342,7 +345,7 @@ def test_participant_can_be_linked_to_an_account_after_creation(db, meetup, acco
 
 def test_a_linked_account_can_be_swapped(db, meetup, account):
     other_id = _second_account(db)
-    added = participants.add_participant(
+    added = meetups.add_participant(
         db,
         str(meetup.id),
         account.id,
@@ -350,7 +353,7 @@ def test_a_linked_account_can_be_swapped(db, meetup, account):
     )
     assert added.account_id == account.id
 
-    relinked = participants.update_participant(
+    relinked = meetups.update_participant(
         db,
         str(meetup.id),
         str(added.id),
@@ -366,14 +369,14 @@ def test_a_linked_account_can_be_swapped(db, meetup, account):
 
 def test_omitting_the_account_unlinks_it(db, meetup, account):
     """PUT is a full replace, so a caller that drops account_id clears it."""
-    added = participants.add_participant(
+    added = meetups.add_participant(
         db,
         str(meetup.id),
         account.id,
         AddParticipantRequest(name="Ada", account_id=account.id),
     )
 
-    unlinked = participants.update_participant(
+    unlinked = meetups.update_participant(
         db, str(meetup.id), str(added.id), account.id, _update_request()
     )
     assert unlinked.account_id is None
@@ -381,12 +384,12 @@ def test_omitting_the_account_unlinks_it(db, meetup, account):
 
 def test_linking_an_unknown_account_on_update_is_a_404(db, meetup, account):
     """A dangling foreign key is the caller's mistake, not a storage outage."""
-    added = participants.add_participant(
+    added = meetups.add_participant(
         db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
     )
 
     with pytest.raises(AccountNotFoundError):
-        participants.update_participant(
+        meetups.update_participant(
             db,
             str(meetup.id),
             str(added.id),
@@ -401,7 +404,7 @@ def test_linking_an_unknown_account_on_update_is_a_404(db, meetup, account):
 
 def test_linking_an_unknown_account_on_add_is_a_404(db, meetup, account):
     with pytest.raises(AccountNotFoundError):
-        participants.add_participant(
+        meetups.add_participant(
             db,
             str(meetup.id),
             account.id,
@@ -462,11 +465,11 @@ async def test_unknown_account_over_http_is_a_404(client, meetup):
 
 
 def test_an_unplaced_participant_can_be_renamed(db, meetup, account):
-    added = participants.add_participant(
+    added = meetups.add_participant(
         db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
     )
 
-    renamed = participants.update_participant(
+    renamed = meetups.update_participant(
         db,
         str(meetup.id),
         str(added.id),
@@ -479,14 +482,14 @@ def test_an_unplaced_participant_can_be_renamed(db, meetup, account):
 
 
 def test_omitting_the_position_clears_it(db, meetup, account):
-    added = participants.add_participant(
+    added = meetups.add_participant(
         db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
     )
-    participants.update_participant(
+    meetups.update_participant(
         db, str(meetup.id), str(added.id), account.id, _update_request()
     )
 
-    cleared = participants.update_participant(
+    cleared = meetups.update_participant(
         db,
         str(meetup.id),
         str(added.id),
@@ -500,13 +503,13 @@ def test_omitting_the_position_clears_it(db, meetup, account):
 
 
 def test_participant_starts_unplaced_and_can_be_placed(db, meetup, account):
-    added = participants.add_participant(
+    added = meetups.add_participant(
         db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
     )
     assert added.position is None
     assert added.travel_mode == "transit"
 
-    placed = participants.update_participant(
+    placed = meetups.update_participant(
         db, str(meetup.id), str(added.id), account.id, _update_request()
     )
     assert placed.position == Position(latitude=48.2, longitude=16.4)
