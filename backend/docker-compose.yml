@@ -52,6 +52,80 @@ services:
             retries: 30
             start_period: 60s
 
+    # Application containers. All four run the same image with a different
+    # command; none of them start by default, so `docker compose up` still
+    # brings up infrastructure only and `uv run fastapi dev` keeps working.
+    #   docker compose --profile app up      api + rq worker
+    #   docker compose --profile jobs up     the scheduled jobs
+    api:
+        build: .
+        profiles: ["app"]
+        restart: unless-stopped
+        env_file: .env
+        environment: &in_cluster
+            POSTGRES_HOST: postgres
+            REDIS_HOST: redis
+        ports:
+            - '${API_PORT:-8000}:8000'
+        volumes:
+            # Read-only: the matrix job writes these folders, the API only maps them.
+            - ./app/data/output_dev:/srv/app/data/output_dev:ro
+        depends_on: &infra_ready
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+
+    worker:
+        build: .
+        profiles: ["app"]
+        restart: unless-stopped
+        command: ["python", "-m", "app.modules.demo.worker"]
+        env_file: .env
+        environment: *in_cluster
+        depends_on: *infra_ready
+
+    # `--every` is the development stand-in for a scheduler. In production these
+    # become CronJobs/scheduled tasks running the same command without the flag,
+    # which is why the runner exits non-zero on failure.
+    scrape-events:
+        build: .
+        profiles: ["jobs"]
+        restart: unless-stopped
+        command: ["python", "-m", "app.jobs.runner", "scrape-events", "--every", "3600"]
+        env_file: .env
+        environment: *in_cluster
+        depends_on: *infra_ready
+
+    ingest-geodata:
+        build: .
+        profiles: ["jobs"]
+        restart: unless-stopped
+        command: ["python", "-m", "app.jobs.runner", "ingest-geodata", "--every", "86400"]
+        env_file: .env
+        environment: *in_cluster
+        depends_on: *infra_ready
+
+    build-pois:
+        build: .
+        profiles: ["jobs"]
+        restart: unless-stopped
+        command: ["python", "-m", "app.jobs.runner", "build-pois", "--every", "86400"]
+        env_file: .env
+        environment: *in_cluster
+        depends_on: *infra_ready
+
+    bake-matrices:
+        build: .
+        profiles: ["jobs"]
+        restart: unless-stopped
+        command: ["python", "-m", "app.jobs.runner", "bake-matrices", "--every", "604800"]
+        env_file: .env
+        environment: *in_cluster
+        volumes:
+            - ./app/data/output_dev:/srv/app/data/output_dev
+        depends_on: *infra_ready
+
 volumes:
   postgres_data:
   redis_data:
