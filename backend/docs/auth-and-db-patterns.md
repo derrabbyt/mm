@@ -5,14 +5,14 @@ using the conventions already established by `accounts`.
 
 ## 1. Getting the current user
 
-`CurrentIdentityDep` (`app/auth/supabase.py`) gives you a `SupabaseIdentity` —
+`CurrentIdentityDep` (`app/modules/accounts/identity.py`) gives you a `SupabaseIdentity` —
 the **verified JWT identity**: `supabase_user_id`, `email`, raw `claims`. It
 is not a database row; `get_current_identity` rebuilds it from scratch on
 every request.
 
 Almost every authenticated endpoint wants the actual `Account` row (`id`,
 `display_name`, `providers`, etc.) rather than just the claims, so that's
-wrapped as its own dependency, `CurrentAccountDep` (`app/services/accounts.py`):
+wrapped as its own dependency, `CurrentAccountDep` (`app/modules/accounts/service.py`):
 
 ```python
 def get_current_account(identity: CurrentIdentityDep, db: DbSessionDep) -> Account:
@@ -21,15 +21,15 @@ def get_current_account(identity: CurrentIdentityDep, db: DbSessionDep) -> Accou
 CurrentAccountDep = Annotated[Account, Depends(get_current_account)]
 ```
 
-It lives in `services/accounts.py`, not next to `CurrentIdentityDep` in
-`auth/supabase.py` — `services/accounts.py` already imports `SupabaseIdentity`
-from `auth/supabase.py`, so defining `CurrentAccountDep` inside
-`auth/supabase.py` instead (importing `get_or_create_account` back from
-`services/accounts.py`) would be a circular import. Any dependency that
+It lives in `accounts/service.py`, not next to `CurrentIdentityDep` in
+`accounts/identity.py` — `service.py` already imports `SupabaseIdentity`
+from `identity.py`, so defining `CurrentAccountDep` inside
+`identity.py` instead (importing `get_or_create_account` back from
+`service.py`) would be a circular import. Any dependency that
 composes a service function with an auth dependency belongs in the service
 module; the same reasoning applies for a future `CurrentTripDep` or similar.
 
-`routers/accounts.py` uses it directly — one dependency, no manual call to
+`accounts/router.py` uses it directly — one dependency, no manual call to
 the service function:
 
 ```python
@@ -50,10 +50,10 @@ on first sight), all before the function body runs.
 ## 2. Protecting endpoints
 
 **Public** (the default): don't ask for `CurrentIdentityDep` / `CurrentAccountDep`
-at all — like `get_members` in `meetup.py`.
+at all.
 
 **Protected, one route** — add the dependency as a parameter, same as
-`accounts.py`:
+`accounts/router.py`:
 
 ```python
 def get_my_trips(account: CurrentAccountDep, db: DbSessionDep) -> list[TripRead]:
@@ -89,27 +89,25 @@ route and skip the router-level line — it does both.
 
 ## 3. Adding a new DB table
 
-Same four files as `Account`, then two Alembic commands.
+A table belongs to exactly one module. Everything for it lives in that
+module's folder — see `docs/architecture.md` for why.
 
-1. **Model** — `app/models/trip.py`, same shape as `account.py` (`Base`,
-   `Mapped`/`mapped_column`; the naming convention is already global via
-   `Base.metadata`).
-2. **Register it** in `app/models/__init__.py` *and* `migrations/env.py` —
-   this import is the easy-to-forget step. Alembic only compares tables it
-   has actually imported into `Base.metadata`; a model that exists but was
-   never imported there is invisible to autogenerate and won't be created.
+1. **Model** — `app/modules/trips/models.py`, same shape as
+   `accounts/models.py` (`Base`, `Mapped`/`mapped_column`; the naming
+   convention is already global via `Base.metadata`). Its wire shapes go in
+   `app/modules/trips/schemas.py`.
+2. **Register it** in `app/metadata.py` — this import is the
+   easy-to-forget step. Alembic only compares tables it has actually imported
+   into `Base.metadata`; a model that exists but was never imported there is
+   invisible to autogenerate and won't be created. `migrations/env.py` imports
+   `metadata` and nothing else, so this is the only place to touch.
 
    ```python
-   # app/models/__init__.py
-   from .account import Account
-   from .trip import Trip
+   # app/metadata.py
+   from ..modules.accounts.models import Account
+   from ..modules.trips.models import Trip
 
    __all__ = ["Account", "Trip"]
-   ```
-
-   ```python
-   # migrations/env.py
-   from app.models import Account, Trip  # noqa: F401
    ```
 
 3. **Generate, review, apply** — containers running (`docker compose up -d`):
@@ -131,50 +129,70 @@ the diff.
 ## 4. Calling them — the layering
 
 ```
-router  → thin HTTP glue: pulls deps, calls a service function, returns
-service → the actual query/business logic, takes `db: Session` as a parameter
-model   → the SQLAlchemy table
-schema  → the Pydantic shape returned to the client
+modules/<x>/router.py      thin HTTP glue: pulls deps, calls a service, returns
+modules/<x>/public.py      what other modules may import - and all they may
+modules/<x>/service.py     business logic and orchestration, takes `db: Session`
+modules/<x>/repository.py  every SQLAlchemy statement, and nothing else
+modules/<x>/models.py      the SQLAlchemy tables
+modules/<x>/schemas.py     the Pydantic shapes on the wire
+core/contracts.py          the shapes other modules see instead
 ```
 
-Routers never touch SQLAlchemy directly — they always go through a service
-function, the same way `routers/accounts.py` never calls `get_or_create_account`
-itself; it only ever goes through `CurrentAccountDep`, which calls it once
-inside `services/accounts.py`.
+Two rules hold this together:
 
-`services/trips.py`:
+- **Routers never touch SQLAlchemy**, the same way `accounts/router.py` never
+  calls `get_or_create_account` itself; it only ever goes through
+  `CurrentAccountDep`.
+- **`SQLAlchemyError` never leaves `repository.py`.** The repository catches it
+  and raises the domain error (`MeetupLoadError`, `EventsLoadError`, …), so a
+  service reads as business logic rather than as error plumbing.
+
+`modules/trips/repository.py`:
 
 ```python
 import uuid
+from collections.abc import Sequence
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from ..models.trip import Trip
-from ..schemas.trip import CreateTripRequest
+from ...core.exceptions import TripsLoadError
+from .models import Trip
 
 
-def list_trips_for_account(db: Session, account_id: uuid.UUID) -> list[Trip]:
-    return db.scalars(select(Trip).where(Trip.account_id == account_id)).all()
-
-
-def create_trip(db: Session, account_id: uuid.UUID, data: CreateTripRequest) -> Trip:
-    trip = Trip(account_id=account_id, name=data.name)
-    db.add(trip)
-    db.commit()
-    db.refresh(trip)
-    return trip
+def list_for_account(db: Session, account_id: uuid.UUID) -> Sequence[Trip]:
+    try:
+        return db.scalars(select(Trip).where(Trip.account_id == account_id)).all()
+    except SQLAlchemyError as exc:
+        raise TripsLoadError() from exc
 ```
 
-`routers/trips.py`:
+`modules/trips/service.py`:
 
 ```python
-@router.get("/")
-def list_trips(account: CurrentAccountDep, db: DbSessionDep) -> list[TripRead]:
-    return [TripRead.model_validate(t) for t in trips.list_trips_for_account(db, account.id)]
+from . import repository
+from .schemas import TripRead
+
+
+def get_trips(db: Session, account_id: uuid.UUID) -> list[TripRead]:
+    return [TripRead.model_validate(t) for t in repository.list_for_account(db, account_id)]
 ```
 
-`db: DbSessionDep` is the same session dependency `accounts.py` already
+`modules/trips/router.py`:
+
+```python
+@router.get("", operation_id="getTrips")
+def get_trips(account: CurrentAccountDep, db: DbSessionDep) -> list[TripRead]:
+    return service.get_trips(db, account.id)
+```
+
+Primary keys reach the repository already parsed — turning a client string
+into a `UUID` is the service's job, because "not a UUID" is a *not found*, not
+a storage failure. See `meetups/service.py:get_owned_meetup`.
+
+`db: DbSessionDep` is the same session dependency `accounts` already
 uses — never construct a new engine or `Session()` directly; always take
 `db` as a parameter and pass it down, so one request uses one transaction
-end-to-end.
+end-to-end. A scheduled job has no request to hang off, so it opens its own:
+`with SessionLocal() as db:` (see `docs/architecture.md`).

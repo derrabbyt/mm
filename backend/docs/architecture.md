@@ -1,0 +1,340 @@
+# Architecture
+
+A modular monolith: one repo, one package, one image, several containers.
+
+## Layout
+
+```
+app/
+├── api/main.py        the FastAPI shell — which modules are exposed over HTTP
+├── jobs/              the scheduled-job runtime — runner, registry
+├── modules/           the features, one folder each
+├── core/              config, logging, redis, exceptions, enums, contracts
+├── db/                Base and session — imported by every module, imports none
+├── metadata.py        every model, for Alembic — imports every module, imported by none
+└── data/              reference data and baked datasets
+```
+
+A module owns everything specific to one business capability:
+
+```
+modules/meetups/
+├── router.py      the door the frontend comes through
+├── public.py      the door other backend modules come through
+├── service.py     business logic
+├── repository.py  SQLAlchemy
+├── schemas.py     HTTP request/response bodies
+├── models.py      tables
+└── jobs.py        scheduled entry points (only where there are any)
+```
+
+The layering inside a module is described in `auth-and-db-patterns.md`.
+
+## The two entry points
+
+Both paths run the same code. That is the whole point of the arrangement:
+
+```
+router.py  →  service.py  →  repository.py
+jobs.py    →  service.py  →  repository.py
+```
+
+A job that reimplements what an endpoint already does is a bug, not a
+shortcut — the two will drift.
+
+## Module boundaries
+
+A module has exactly two doors:
+
+```
+frontend  ──HTTP──►  router.py  ─┐
+                                 ├─►  service.py  ─►  repository.py
+other modules  ──►  public.py  ──┘
+```
+
+`public.py` is to other backend modules what `router.py` is to the frontend:
+the whole surface, and the only thing anyone outside is allowed to touch.
+Everything else in the folder is internal. Importing `meetups.service` or
+`meetups.models` from another module is a violation even though it would work,
+and `tests/test_module_boundaries.py` fails the build on it.
+
+## Modules do not couple through the database
+
+The second rule, and the one that gives the first its teeth:
+
+> The layers that hold a `Session` - `service.py`, `repository.py`,
+> `models.py`, `jobs.py` - may not import another module at all.
+
+Composition happens in `router.py`, which owns the request's session and is
+free to call several modules and pass values between them. So a service can
+never reach another module's tables, not because it has been told not to but
+because it has not been told the other module exists.
+
+`rendezvous/service.py` is what this buys. It used to take
+`(db, meetup_id, account_id)` and fetch what it needed through
+`meetups.public`; it never queried meetups' tables, but its signature could not
+say so. Now it takes the people and the time and answers with a place:
+
+```python
+def compute_rendezvous(starts_at, positioned, excluded_ids) -> RendezvousRead:
+```
+
+No session, no imports, and the whole travel-time calculation is testable with
+three made-up participants - which is how `tests/test_rendezvous.py` exercises
+the tie-break, the wrap-around-midnight matrix choice and the unreachable path
+that had no coverage at all before.
+
+The loading moved up into `rendezvous/router.py`:
+
+```python
+meetup = meetups.get_owned_meetup(db, meetup_id, account.id)
+positioned, excluded = meetups.get_positioned_participants(db, meetup.id)
+return service.compute_rendezvous(meetup.starts_at, positioned, excluded)
+```
+
+`events/router.py` does the same three lines before calling its own service.
+That duplication is deliberate: it is wiring, it is visible, and the
+alternative is a module that holds a database on another module's behalf.
+
+Why bother, when the direct import works today: what you reach past is what
+you get pinned to. `events` imported `rendezvous.repository.to_local` for
+exactly one reason - it needed the dataset's timezone - and that quietly made
+an unrelated refactor of the dataset loader into a change to `events`. Going
+through `public.py` means each module can rearrange its own insides freely, and
+what it owes everyone else is one short, readable file.
+
+Current dependencies, all one-way:
+
+```
+              ┌── meetups.public ──────┐
+              │                        │
+router.py ────┼── rendezvous.public ───┼──► its own service.py
+              │                        │
+              └── accounts.public ─────┘
+```
+
+Which modules each router composes:
+
+| router | calls |
+|---|---|
+| `meetups` | `accounts` |
+| `rendezvous` | `accounts`, `meetups` |
+| `events` | `accounts`, `meetups`, `rendezvous` |
+| `accounts`, `demo` | nothing |
+
+A module gets a `public.py` when something actually crosses into it; `events`,
+`demo`, `geodata`, `poi` and `matrix` have no consumers yet and so have none.
+Every arrow above now leaves from a `router.py` - no service imports anything
+outside its own module.
+
+Keep exports thin, and prefer exporting a function or a schema over a model.
+`meetups.public` exports `MeetupParticipant` - an ORM row, session-bound,
+carrying its table with it - because `rendezvous` needs positions and travel
+modes per participant and no schema describes that shape yet. That is the
+heaviest export in the codebase and the first one to replace if a second
+consumer appears.
+
+There are two independent pipelines behind the scheduled jobs, and they share
+nothing but the database:
+
+```
+geodata ──┬──► matrix ──► rendezvous          OSM extract + GTFS feed,
+          └──► poi                            put in shared storage
+
+activity-loader ──► events tables ──► events   event listings, another repo
+```
+
+`matrix` and `poi` both read what `geodata` has put in shared storage rather
+than calling it - they are sequenced by their schedules, not by an import,
+which is why none of the three has a `public.py`. The bake turns the OSM
+extract and the GTFS feed into cell-to-cell travel times, and the built
+manifest records the exact files it used. Scraping event listings has no input,
+schedule or failure mode in common with any of that.
+
+`demo` is a module like any other - the SSE, cache and RQ playground - so that
+the top level stays free of one-file `routers/`, `schemas/` and `services/`
+folders. It depends on nothing and nothing depends on it.
+
+One thing sits outside a module on purpose: **`core/exceptions.py`**, one
+catalogue, because it is also what types the frontend's generated error models.
+Splitting it per module would fragment the OpenAPI schema to satisfy a
+principle.
+
+## Where a shape lives
+
+There are two kinds of shape, and they answer to different people.
+
+| | lives in | answers to | appears in OpenAPI |
+|---|---|---|---|
+| request/response | `modules/<x>/schemas.py` | the frontend | yes |
+| cross-module | `core/contracts.py` | other backend modules | no |
+
+An HTTP schema is driven by what one screen needs and by the generated Angular
+client; it belongs to the module that serves the endpoint, and moving it away
+would put a feature back across two folders for no gain. A contract is driven
+by what a sibling module needs; it belongs in `core` so that neither module
+owns the vocabulary and no module has to import another's `schemas.py` to
+speak it.
+
+`<X>Ref` is a minimal pointer - an id plus enough to name the thing. `<X>Info`
+is a read-only view carrying the fields a consumer actually needs. Both are
+values, which is the point: a module handing out an ORM model hands out a
+session-bound row, its table and its whole future schema, while a module
+handing out an `Info` hands out exactly what it promised. `meetups.public`
+answers in `MeetupInfo` and `ParticipantInfo` for that reason - it used to
+return `Meetup` and `MeetupParticipant`, and that made every column of those
+tables part of its public promise by accident.
+
+Models stay in their module either way. Where a model lives answers "who is
+allowed to write this?", which matters most for `events`, whose tables this
+project only reads. Alembic is not a reason to centralise them
+(`app/metadata.py` handles that) and neither are cross-module foreign keys,
+which SQLAlchemy resolves by table name rather than by import.
+
+An enum used by both a column and the shapes built from it has to sit at or
+below `core`, or `core` ends up importing from `modules`. That is
+`core/enums.py`, and `TravelMode` is its only resident.
+
+## Nothing depends on anything that depends on it
+
+Both graphs are acyclic - file by file, and layer by layer - and
+`tests/test_import_graph.py` keeps them that way.
+
+The layered check is the one that earns its keep. `db/` and `core/` sit below
+every module, so a file in either that reaches up into `modules/` makes the
+plumbing depend on the features built on it. That is exactly what the model
+manifest used to do: `db/registry.py` imported every module's models so Alembic
+could see them, while every model imported `db/base.py`. No import cycle - the
+two are different files - but at the layer level `db` and the feature modules
+each depended on the other.
+
+It now lives at `app/metadata.py`, above the modules rather than beneath them.
+Nothing imports it except `migrations/env.py`, so it is free to know about
+everything.
+
+## The URL tree lives in one place
+
+A rendezvous and the events near it are sub-resources of a meetup, so that is
+what the paths say - but they are computed by their own modules, and those
+modules must not depend on `meetups` to know where they hang. `app/api/main.py`
+assembles the nesting instead:
+
+```python
+MEETUP = "/api/meetups/{meetup_id}"
+
+tree = APIRouter()
+tree.include_router(meetups_router)
+tree.include_router(rendezvous_router, prefix=MEETUP, tags=["meetups"])
+tree.include_router(events_router, prefix=MEETUP, tags=["meetups"])
+```
+
+`rendezvous/router.py` states only `@router.get("/rendezvous")` and knows
+nothing about meetups' URLs. Putting the routes in `meetups` instead would have
+made `meetups` depend on `rendezvous` and `events`, which already depend on it -
+a cycle. The resource hierarchy and the module graph are different graphs, and
+this is where they are reconciled.
+
+One thing to watch: a docstring on a route function is published as that
+endpoint's OpenAPI `description` and ends up in the generated Angular client.
+Implementation notes on a router therefore go in `#` comments.
+
+## Running the jobs
+
+```bash
+python -m app.jobs.runner --list
+python -m app.jobs.runner scrape-events
+python -m app.jobs.runner scrape-events --every 3600   # development only
+```
+
+One process, one job, an exit code that says whether it worked. Production
+replaces `--every` with a real scheduler (a Kubernetes CronJob, an ECS
+scheduled task, a crontab line) running the same command — the application
+code does not change.
+
+Add a job in two steps: write the function in the owning module's `jobs.py`,
+then name it in `app/jobs/registry.py`. The registry stores import *strings*,
+not functions, so the runner only imports the module it was asked for — a
+scraper container never loads the 1.4 GB travel-time dataset.
+
+Jobs have no request to hang a session off, so they open their own:
+
+```python
+from ...db.session import SessionLocal
+
+def scrape_events() -> None:
+    with SessionLocal() as db:
+        service.ingest(db)
+```
+
+Scheduled jobs are their own processes rather than RQ tasks - they need no
+producer and no queue, and they are long and heavy enough to want their own
+scaling.
+
+RQ is the separate mechanism for request-triggered background work, and `demo`
+is currently its only user: `demo/router.py` enqueues, `demo/worker.py`
+consumes, and nothing else in the codebase imports `rq`. That is why the worker
+sits inside `demo` rather than in `app/jobs/` - a module owning a process entry
+point is not where it belongs long-term, but it is the truth today, and the day
+something real enqueues it moves up.
+
+## What is still outside, and will not be
+
+Two producers live in their own repos today. Both are being folded in, and the
+repo is meant to end up self-contained. The module they land in already exists,
+which is the point of having stubbed them:
+
+| today | becomes | when it lands |
+|---|---|---|
+| **activity-loader** — scrapes event listings, owns and writes `events`, `occurrences` and nine more tables | the `scrape-events` job in `modules/events` | `events` owns those tables: real models, real migrations, and `SCRAPER_TABLES` in `migrations/env.py` goes away along with the `include_object` branch that reads it |
+| **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
+
+Three things in the codebase read as permanent today and are not:
+
+- `modules/events/models.py` maps a chosen subset of columns and says never to
+  write through them. After absorption that subset becomes the schema.
+- `migrations/env.py` carries an eleven-table exclusion list. It is the only
+  thing standing between autogenerate and a migration that drops another
+  project's data - and it disappears entirely.
+- `app/data/ttm_backend_integration.md` reads as an integration guide with an
+  external producer. It becomes an internal format note.
+
+One packaging consequence: `r5py` is currently a default dependency that nothing
+imports, and the obvious move is to drop it. After absorption the `matrix` job
+genuinely needs it, and a JDK with it - so the move is a matrix-specific
+dependency group, not a deletion, and only that image carries the weight.
+
+## Deployment
+
+One image (`Dockerfile`), one command per role:
+
+```
+                          mm-backend
+                               │
+        ┌──────────────────────┴──────────────────────┐
+        ▼                                             ▼
+  long-running                              background jobs
+  ────────────                              ───────────────
+  api      fastapi run app/api/main.py      scrape-events    hourly
+  worker   -m app.modules.demo.worker       ingest-geodata   daily
+                                            build-pois       daily
+                                            bake-matrices    weekly
+
+                                            python -m app.jobs.runner <name>
+                                            one run, then exit
+```
+
+All six are siblings. Nothing here starts, calls or queues work for anything
+else: the four jobs wake on their own schedule, and neither the API nor the rq
+worker is involved in running them.
+
+`docker-compose.yml` carries all of them behind profiles, so the default
+`docker compose up` still brings up infrastructure only:
+
+```bash
+docker compose up                    # postgres, redis, photon
+docker compose --profile app up      # + api and worker
+docker compose --profile jobs up     # + the scheduled jobs
+```
+
+The baked matrices are a mounted volume, not an image layer: 1.4 GB, read only
+by the API, written on its own schedule by the matrix job.
