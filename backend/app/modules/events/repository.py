@@ -4,11 +4,15 @@
 `EventsLoadError` and the write path `ListingWriteError`, so a service reads as
 what it does rather than as error plumbing.
 
-Writes are upserts keyed on `(source, source_event_id)`, never
-delete-and-replace. Every touch stamps `last_seen_run`, and a Listing that stops
-appearing is retired with `disappeared_at` rather than deleted - which is what
-makes a cancellation visible, since several Sources simply drop a cancelled
-happening from their output.
+Writes are upserts keyed on `(source, source_event_id)`. Every touch stamps
+`last_seen_run`, and that stamp is what says whether a row is still real:
+
+* a **Listing** the run did not touch is retired with `disappeared_at` rather
+  than deleted, because it may have been cancelled and several Sources simply
+  drop a cancelled happening from their output - the difference between
+  "cancelled" and "we failed to fetch" is worth keeping;
+* an **Occurrence** its own Listing's run did not stamp is deleted, because the
+  Listing is still there and the date simply moved.
 """
 
 from collections.abc import Sequence
@@ -22,6 +26,7 @@ from sqlalchemy import (
     and_,
     case,
     cast,
+    delete,
     func,
     or_,
     select,
@@ -239,6 +244,19 @@ def upsert_listing(db: Session, listing: NormalizedListing, run_id: str) -> int:
                             "last_seen_run",
                         )
                     },
+                )
+            )
+
+            # Whatever this run did not stamp is a date the Source no longer
+            # lists. Deleted rather than retired, unlike a Listing: a Listing
+            # that stops appearing may have been cancelled, which is worth
+            # keeping, but an Occurrence that vanished while its Listing stayed
+            # is simply a date that moved - and leaving it behind serves the
+            # happening on a day it is not on.
+            db.execute(
+                delete(Occurrence).where(
+                    Occurrence.listing_id == listing_id,
+                    Occurrence.last_seen_run != run_id,
                 )
             )
     except SQLAlchemyError as exc:

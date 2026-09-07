@@ -15,8 +15,9 @@ def discover() -> dict[str, Source]:
     """Every Source in this package, by name."""
     found: dict[str, Source] = {}
     for info in pkgutil.iter_modules(__path__):
-        if info.name.startswith("_") or info.name in {"spec", "http"}:
-            continue
+        # `spec` and `http` are in here too and fall out on their own: neither
+        # defines a SPEC. Naming them would be the registration list this
+        # docstring says there is none of.
         module = importlib.import_module(f"{__name__}.{info.name}")
         spec = getattr(module, "SPEC", None)
         if not isinstance(spec, SourceSpec):

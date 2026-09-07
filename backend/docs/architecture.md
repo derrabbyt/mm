@@ -180,12 +180,13 @@ principle.
 
 ## Where a shape lives
 
-There are two kinds of shape, and they answer to different people.
+There are three kinds of shape, and they answer to different people.
 
 | | lives in | answers to | appears in OpenAPI |
 |---|---|---|---|
 | request/response | `modules/<x>/schemas.py` | the frontend | yes |
 | cross-module | `core/contracts.py` | other backend modules | no |
+| module-internal | `modules/<x>/<name>.py` | only that module | no |
 
 An HTTP schema is driven by what one screen needs and by the generated Angular
 client; it belongs to the module that serves the endpoint, and moving it away
@@ -193,6 +194,15 @@ would put a feature back across two folders for no gain. A contract is driven
 by what a sibling module needs; it belongs in `core` so that neither module
 owns the vocabulary and no module has to import another's `schemas.py` to
 speak it.
+
+The third is a module's own vocabulary, and it earns a file only when several
+layers inside the module have to speak it. `events/scraped.py` is the one:
+`RawListing` is what a Source's parse yields, `NormalizedListing` is what the
+repository writes, and `sources/`, `normalize.py`, `service.py` and
+`repository.py` all need to name them. It sits next to the pure-logic files
+rather than in `schemas.py` (nothing here is on the wire) or `core/contracts.py`
+(no other module may see it). If a second module ever needs one of these, that
+is the signal to promote it to `core/contracts.py`, not to import across.
 
 `<X>Ref` is a minimal pointer - an id plus enough to name the thing. `<X>Info`
 is a read-only view carrying the fields a consumer actually needs. Both are

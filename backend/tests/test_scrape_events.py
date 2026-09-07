@@ -186,6 +186,23 @@ async def test_a_listing_that_stopped_appearing_is_no_longer_served(
     assert "Stub concert" not in titles
 
 
+async def test_a_listing_whose_date_moved_leaves_the_old_day(
+    client, meetup, meeting_at, run_scrape
+):
+    """A Source rescheduling a happening must not leave it on both days.
+
+    The Listing survives - only its Occurrence moved - so nothing retires it,
+    and the stale Occurrence went on being served on a day it was not on.
+    """
+    run_scrape(StubSource(meeting_at + timedelta(minutes=30)))
+    assert "Stub concert" in {one["title"] for one in await _events(client, meetup)}
+
+    # The same Listing, now two days later. The meetup is still on the old day.
+    run_scrape(StubSource(meeting_at + timedelta(days=2, minutes=30)))
+
+    assert "Stub concert" not in {one["title"] for one in await _events(client, meetup)}
+
+
 async def test_a_source_that_cannot_be_fetched_fails_the_run(
     client, meetup, meeting_at, run_scrape
 ):

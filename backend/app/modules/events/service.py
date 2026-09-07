@@ -14,7 +14,6 @@ others.
 
 import logging
 import uuid
-from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -34,7 +33,7 @@ from .scraped import (
     SourceRunStats,
 )
 from .sources.http import HttpClient
-from .sources.spec import FetchContext, RawPayload, Source
+from .sources.spec import FetchContext, Source
 
 logger = logging.getLogger(__name__)
 
@@ -143,13 +142,13 @@ def _collect(source: Source, ctx: FetchContext) -> tuple[list[RawListing], str |
     narrower still - it costs that document and nothing else.
     """
     name = source.SPEC.name
-    listings: list[RawListing] = []
-    payloads: Iterable[RawPayload] = ()
     try:
         payloads = list(source.fetch(ctx))
     except Exception as exc:
         logger.exception("Source %s could not be fetched", name)
         return [], f"{type(exc).__name__}: {exc}"
+
+    listings: list[RawListing] = []
 
     for payload in payloads:
         try:
@@ -202,19 +201,22 @@ def scrape_source(
     if error is None and storable:
         retired = repository.retire_unseen(db, spec.name, run_id)
 
+    quarantined = repository.quarantine(db, refused, run_id)
+
+    finished = datetime.now(UTC)
     stats = SourceRunStats(
         run_id=run_id,
         source=spec.name,
         started_at=started,
-        finished_at=datetime.now(UTC),
-        duration_ms=int((datetime.now(UTC) - started).total_seconds() * 1000),
+        finished_at=finished,
+        duration_ms=int((finished - started).total_seconds() * 1000),
         fetched_ok=error is None,
         requests=http.request_count,
         raw_bytes=http.bytes_fetched,
         http_status_counts={str(k): v for k, v in http.status_counts.items()},
         parsed_count=len(raw),
         valid_count=len(storable),
-        quarantined_count=repository.quarantine(db, refused, run_id),
+        quarantined_count=quarantined,
         occurrences_count=occurrences,
         error=error,
     )

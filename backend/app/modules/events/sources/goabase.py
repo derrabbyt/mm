@@ -3,9 +3,16 @@
     GET https://www.goabase.net/api/party/json/?country=AT
 
 Note the **`/json/` path segment** - without it the same path returns HTML.
-`limit`, `page` and `dateFrom` are all silently ignored, so the response is the
-complete upcoming set for the country (~25 for AT) and the window is applied
-locally. `page=2` returning 0 confirms there is nothing more to page to.
+`limit`, `page` and `dateFrom` are all silently ignored, so one call returns the
+complete upcoming set for the country (~25 for AT), some of it a year or more
+out. `page=2` returning 0 confirms there is nothing more to page to.
+
+Nothing here honours `FetchContext`'s date window, because there is no request
+to put it in and `parse` must stay pure - filtering on "today" here would make
+this a different function every day and the fixture tests untestable. What is
+plausible is normalisation's job, and its window is deliberately the wider one:
+asking a site for sixty days is not the same as refusing to store a run that
+lasts longer than that.
 
 Dates are full ISO with an offset, and coordinates are present but **coarse**:
 every Vienna party reports 48.2 / 16.3, the city centroid rather than the Venue.
