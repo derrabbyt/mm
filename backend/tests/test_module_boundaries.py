@@ -12,7 +12,14 @@ import pytest
 
 MODULES_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "modules"
 
-SOURCE_FILES = sorted(MODULES_DIR.glob("*/*.py"))
+# Recursive: a rule that only checked a module's top level would be escaped by
+# putting the offending import one directory deeper.
+SOURCE_FILES = sorted(MODULES_DIR.glob("*/**/*.py"))
+
+
+def _owner(path: pathlib.Path) -> str:
+    """The module a file belongs to, however deeply nested inside it."""
+    return path.relative_to(MODULES_DIR).parts[0]
 
 
 def _imported_targets(tree: ast.AST, package: list[str]) -> list[str]:
@@ -43,8 +50,9 @@ DB_FACING = {"service.py", "repository.py", "models.py", "jobs.py"}
 
 def _crossings(path: pathlib.Path) -> list[str]:
     """Absolute paths this file imports that belong to a *different* module."""
-    owner = path.parent.name
-    targets = _imported_targets(ast.parse(path.read_text()), ["app", "modules", owner])
+    owner = _owner(path)
+    package = ["app", "modules", *path.relative_to(MODULES_DIR).parts[:-1]]
+    targets = _imported_targets(ast.parse(path.read_text()), package)
     return [
         t
         for t in targets
@@ -55,7 +63,7 @@ def _crossings(path: pathlib.Path) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    "path", SOURCE_FILES, ids=lambda p: f"{p.parent.name}/{p.name}"
+    "path", SOURCE_FILES, ids=lambda p: str(p.relative_to(MODULES_DIR))
 )
 def test_db_facing_layers_do_not_know_other_modules_exist(path: pathlib.Path):
     if path.name not in DB_FACING:
@@ -63,7 +71,7 @@ def test_db_facing_layers_do_not_know_other_modules_exist(path: pathlib.Path):
 
     reached = sorted({t for t in _crossings(path) if len(t.split(".")) >= 4})
     assert not reached, (
-        f"app/modules/{path.parent.name}/{path.name} holds a Session and imports "
+        f"{path.relative_to(MODULES_DIR.parent.parent)} holds a Session and imports "
         + ", ".join(reached)
         + ". Move the composition into router.py and pass values instead - see "
         "docs/architecture.md."
@@ -71,11 +79,11 @@ def test_db_facing_layers_do_not_know_other_modules_exist(path: pathlib.Path):
 
 
 @pytest.mark.parametrize(
-    "path", SOURCE_FILES, ids=lambda p: f"{p.parent.name}/{p.name}"
+    "path", SOURCE_FILES, ids=lambda p: str(p.relative_to(MODULES_DIR))
 )
 def test_module_only_reaches_another_module_through_its_public(path: pathlib.Path):
-    owner = path.parent.name
-    package = ["app", "modules", owner]
+    owner = _owner(path)
+    package = ["app", "modules", *path.relative_to(MODULES_DIR).parts[:-1]]
     tree = ast.parse(path.read_text())
 
     violations = []
@@ -91,7 +99,8 @@ def test_module_only_reaches_another_module_through_its_public(path: pathlib.Pat
             violations.append(target)
 
     assert not violations, (
-        f"app/modules/{owner}/{path.name} reaches past another module's public.py: "
+        f"{path.relative_to(MODULES_DIR.parent.parent)} reaches past "
+        "another module's public.py: "
         + ", ".join(sorted(set(violations)))
         + ". Export what you need from that module's public.py and import it from there."
     )

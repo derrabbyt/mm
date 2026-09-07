@@ -25,8 +25,17 @@ modules/meetups/
 ├── repository.py  SQLAlchemy
 ├── schemas.py     HTTP request/response bodies
 ├── models.py      tables
-└── jobs.py        scheduled entry points (only where there are any)
+├── jobs.py        scheduled entry points (only where there are any)
+└── <name>.py      pure domain logic, named for what it does
 ```
+
+That last one is a category, not a file: `dedup.py`, `normalize.py`. Values in,
+values out, no session and no import outside `core` - so it is neither a service
+(it orchestrates nothing) nor a repository (it touches no storage). Put it at
+the top of the module that needs it. Logic that turns out to be shared gets a
+named file in `core/` instead, the way `contracts.py` and `enums.py` did; there
+is no `utils.py`, and adding one would recreate the dumping ground `core/`
+exists to avoid.
 
 The layering inside a module is described in `auth-and-db-patterns.md`.
 
