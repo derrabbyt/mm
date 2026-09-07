@@ -33,6 +33,15 @@ class Settings(BaseSettings):
 
     dataset_dir: Path = BACKEND_DIR / "app" / "data" / "output_dev" / "vienna_v2_h3r9"
 
+    # How far ahead and behind a scrape asks each Source for. Deployment
+    # settings, unlike a Source's rate limit or its locales - those are
+    # knowledge about the site and live in that Source's own spec.
+    scrape_days_ahead: int = 60
+    scrape_days_back: int = 7
+    # The shared read timeout. A Source that needs longer says so in its spec:
+    # wien.gv.at server-generates a ~490 KB index and takes ~32s to hand it over.
+    scrape_timeout_seconds: float = 30.0
+
     @property
     def supabase_issuer(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/auth/v1"

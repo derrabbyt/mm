@@ -1,17 +1,42 @@
-"""What is on near a point, on a day.
+"""Scraping the catalogue, and reading what is on near a point on a day.
 
-One record per Source, so a happening two Sources listed comes back twice - a
-Listing is not yet an Event. Deduplicating them is a later step.
+The read answers with one record per Source, so a happening two Sources listed
+comes back twice - a Listing is not yet an Event. Deduplicating them is a later
+step.
+
+The scrape is orchestration only. Everything it decides is decided elsewhere: a
+Source knows how to fetch and parse itself, `normalize.py` decides what is
+storable, and `repository.py` owns the SQL. What is left here is the order of
+those steps, and the two rules about when a step may run at all - a run that
+could not fetch never retires anything, and one Source failing never stops the
+others.
 """
 
-from datetime import date, datetime
+import logging
+import uuid
+from collections.abc import Iterable
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
+from ...core.config import settings
 from ...core.contracts import Position
-from . import repository
+from . import repository, sources
 from .models import Listing
+from .normalize import normalize
 from .schemas import EventRead
+from .scraped import (
+    VIENNA_TZ,
+    NormalizedListing,
+    RawListing,
+    Rejected,
+    SourceRunStats,
+)
+from .sources.http import HttpClient
+from .sources.spec import FetchContext, RawPayload, Source
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_RADIUS_METERS = 1000
 DEFAULT_LIMIT = 20
@@ -94,3 +119,137 @@ def _to_schema(
         position=Position(latitude=listing.lat, longitude=listing.lon),
         distance_meters=round(meters),
     )
+
+
+def new_run_id() -> str:
+    """A name for one scrape, stamped so runs sort chronologically."""
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return f"{stamp}-{uuid.uuid4().hex[:6]}"
+
+
+def _client_for(source: Source) -> HttpClient:
+    spec = source.SPEC
+    timeout = spec.timeout_seconds or settings.scrape_timeout_seconds
+    return HttpClient(
+        delay=spec.delay_seconds, timeout=timeout, use_cookies=spec.use_cookies
+    )
+
+
+def _collect(source: Source, ctx: FetchContext) -> tuple[list[RawListing], str | None]:
+    """Fetch and parse one Source. Returns what it yielded and what went wrong.
+
+    A fetch that raises is reported, not re-raised: one site being down must not
+    cost the other twenty their run. A single payload that will not parse is
+    narrower still - it costs that document and nothing else.
+    """
+    name = source.SPEC.name
+    listings: list[RawListing] = []
+    payloads: Iterable[RawPayload] = ()
+    try:
+        payloads = list(source.fetch(ctx))
+    except Exception as exc:
+        logger.exception("Source %s could not be fetched", name)
+        return [], f"{type(exc).__name__}: {exc}"
+
+    for payload in payloads:
+        try:
+            listings.extend(source.parse(payload))
+        except Exception:
+            logger.exception("Source %s could not parse %s", name, payload.url)
+
+    return listings, None
+
+
+def scrape_source(
+    db: Session, source: Source, *, run_id: str, today: date
+) -> SourceRunStats:
+    """Fetch, parse, normalise and store one Source. Never raises for its own
+    failures - they are recorded against the run instead."""
+    spec = source.SPEC
+    started = datetime.now(UTC)
+
+    http = _client_for(source)
+    ctx = FetchContext(
+        http=http,
+        date_from=today - timedelta(days=settings.scrape_days_back),
+        date_to=today + timedelta(days=settings.scrape_days_ahead),
+        locales=spec.locales,
+    )
+
+    raw, error = _collect(source, ctx)
+
+    storable: list[NormalizedListing] = []
+    refused: list[Rejected] = []
+    for one in raw:
+        result = normalize(one, source=spec.name, today=today)
+        if isinstance(result, Rejected):
+            refused.append(result)
+        else:
+            storable.append(result)
+
+    # A write that fails is not survivable the way a fetch that fails is: it
+    # means the database, not the site, so it stops the run rather than being
+    # recorded and stepped over.
+    occurrences = 0
+    for listing in storable:
+        repository.upsert_listing(db, listing, run_id)
+        occurrences += len(listing.occurrences)
+
+    # Only a run that actually fetched something may conclude that what it did
+    # not see is gone. Without the `storable` guard, a site answering 200 with
+    # an empty page would retire the whole Source.
+    retired = 0
+    if error is None and storable:
+        retired = repository.retire_unseen(db, spec.name, run_id)
+
+    stats = SourceRunStats(
+        run_id=run_id,
+        source=spec.name,
+        started_at=started,
+        finished_at=datetime.now(UTC),
+        duration_ms=int((datetime.now(UTC) - started).total_seconds() * 1000),
+        fetched_ok=error is None,
+        requests=http.request_count,
+        raw_bytes=http.bytes_fetched,
+        http_status_counts={str(k): v for k, v in http.status_counts.items()},
+        parsed_count=len(raw),
+        valid_count=len(storable),
+        quarantined_count=repository.quarantine(db, refused, run_id),
+        occurrences_count=occurrences,
+        error=error,
+    )
+    # Commits this Source's transaction - see the repository.
+    repository.record_source_run(db, stats)
+
+    logger.info(
+        "%s: parsed=%d stored=%d quarantined=%d occurrences=%d retired=%d %s",
+        spec.name,
+        stats.parsed_count,
+        stats.valid_count,
+        stats.quarantined_count,
+        stats.occurrences_count,
+        retired,
+        "ok" if stats.fetched_ok else f"FAILED ({error})",
+    )
+    return stats
+
+
+def scrape(db: Session, *, today: date | None = None) -> list[SourceRunStats]:
+    """Scrape every Source, one after another.
+
+    Sequential on purpose: twenty-one Sources at polite delays is still only
+    minutes, it keeps the log readable, and it avoids being a burst of load on
+    anyone. A Source that needs concurrency for detail pages does it inside its
+    own `fetch`.
+    """
+    run_id = new_run_id()
+    discovered = sources.discover()
+    logger.info("Run %s starting over %d source(s)", run_id, len(discovered))
+
+    # Vienna's calendar day. The window a Source is asked for, and the window
+    # normalisation accepts, are both local-calendar windows.
+    today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
+    return [
+        scrape_source(db, source, run_id=run_id, today=today)
+        for source in discovered.values()
+    ]

@@ -220,6 +220,21 @@ class EventsLoadError(AppBaseException):
         super().__init__("Events could not be loaded")
 
 
+class ListingWriteError(AppBaseException):
+    """Raised by the events repository when a scrape cannot store what it read.
+
+    No route lists it, so it never reaches the OpenAPI schema - it is here
+    because this file is the one catalogue, and because a scrape that cannot
+    write must fail loudly rather than log and carry on.
+    """
+
+    code = "listing_write_error"
+    status = 503
+
+    def __init__(self, source: str):
+        super().__init__(f"Listings for {source} could not be written")
+
+
 class AccountUpsertError(AppBaseException):
     code = "account_upsert_error"
     status = 503

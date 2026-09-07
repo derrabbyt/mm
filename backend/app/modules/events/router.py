@@ -50,8 +50,8 @@ def get_rendezvous_events(
     ),
     limit: Annotated[int, Query(ge=1, le=100)] = service.DEFAULT_LIMIT,
 ) -> list[EventRead]:
-    # The day is the meetup's *local* day: the scraper dates occurrences by the
-    # venue's calendar, and a 22:35 meetup in Vienna is already tomorrow in UTC.
+    # The day is the meetup's *local* day: Occurrences are dated by the Venue's
+    # own calendar, and a 22:35 meetup in Vienna is already tomorrow in UTC.
     # Comment, not a docstring: FastAPI publishes docstrings in the schema.
     meetup = meetups.get_owned_meetup(db, meetup_id, account.id)
     positioned, excluded_ids = meetups.get_positioned_participants(db, meetup.id)

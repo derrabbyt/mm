@@ -29,13 +29,20 @@ modules/meetups/
 └── <name>.py      pure domain logic, named for what it does
 ```
 
-That last one is a category, not a file: `dedup.py`, `normalize.py`. Values in,
-values out, no session and no import outside `core` - so it is neither a service
-(it orchestrates nothing) nor a repository (it touches no storage). Put it at
-the top of the module that needs it. Logic that turns out to be shared gets a
-named file in `core/` instead, the way `contracts.py` and `enums.py` did; there
-is no `utils.py`, and adding one would recreate the dumping ground `core/`
-exists to avoid.
+That last one is a category, not a file: `normalize.py`, `categories.py`,
+`region.py`. Values in, values out, no session and no import outside `core` - so
+it is neither a service (it orchestrates nothing) nor a repository (it touches
+no storage). Put it at the top of the module that needs it. Logic that turns out
+to be shared gets a named file in `core/` instead, the way `contracts.py` and
+`enums.py` did; there is no `utils.py`, and adding one would recreate the
+dumping ground `core/` exists to avoid.
+
+A module may also own a folder of adapters, where one capability means talking
+to many outside things that differ only in their details. `events/sources/` is
+the one: twenty-one sites, each with its own fetch and parse, behind one
+contract in `sources/spec.py`. They are discovered rather than listed, so adding
+a Source is adding a file. Nothing in there holds a session, and the boundary
+rules apply to it exactly as they do to the module's top level.
 
 The layering inside a module is described in `auth-and-db-patterns.md`.
 
@@ -275,7 +282,7 @@ from ...db.session import SessionLocal
 
 def scrape_events() -> None:
     with SessionLocal() as db:
-        service.ingest(db)
+        service.scrape(db)
 ```
 
 Scheduled jobs are their own processes rather than RQ tasks - they need no
@@ -297,7 +304,7 @@ which is the point of having stubbed them:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — the twenty-one Source adapters and the deduplication pass | the `scrape-events` job in `modules/events` | the tables are already here: `content.listings`, `content.occurrences` and three more, with real models and real migrations. What is left to move is the scraping itself |
+| **activity-loader** — twenty of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables and the scrape are already here: `content.listings` and four more with real models and real migrations, one Source running end to end, and the contract every other Source follows in `events/sources/spec.py`. What is left is the other twenty Sources, geocoding, and deduplicating Listings into Events |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
 One thing in the codebase reads as permanent today and is not:
