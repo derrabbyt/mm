@@ -1,17 +1,17 @@
-"""Which occurrences count as "on" a given day.
+"""Which Occurrences count as "on" a given day.
 
-An occurrence is a range, not a day. A museum open all year is one row dated at
+An Occurrence is a range, not a day. A museum open all year is one row dated at
 its start with duration_days=364, so a query matching date_local alone hid it
-for the other 364 days - 26% of events on a typical day.
+for the other 364 days - 26% of what is on in a typical day.
 """
 
 from datetime import UTC, date, datetime
 
 import pytest
-from sqlalchemy import text
 
 from app.core.contracts import Position
 from app.modules.events import service
+from app.modules.events.models import Listing, Occurrence
 
 VIENNA = Position(latitude=48.2082, longitude=16.3738)
 DAY = date(2026, 9, 15)
@@ -20,37 +20,35 @@ EVENING = datetime(2026, 9, 15, 19, 0, tzinfo=UTC)
 
 @pytest.fixture
 def listing(db):
-    """A geocoded listing at the reference point, with no occurrences yet.
-
-    Written with raw SQL because these tables belong to the scraper: the model
-    maps the columns we read, not the ones it needs to insert.
-    """
+    """A geocoded Listing at the reference point, with one Occurrence."""
 
     def _make(title: str, starts: datetime, day: date, duration: int, all_day: bool):
-        event_id = db.execute(
-            text("""
-                INSERT INTO events (lang_primary, title_de, title_en, source,
-                                    source_event_id, lat, lon, first_seen_run)
-                VALUES ('de', :t, '', 'test', :sid, :lat, :lon, 'test-run')
-                RETURNING id
-            """),
-            {
-                "t": title,
-                "sid": title,
-                "lat": VIENNA.latitude,
-                "lon": VIENNA.longitude,
-            },
-        ).scalar_one()
-        db.execute(
-            text("""
-                INSERT INTO occurrences (event_id, start_utc, start_local,
-                                         date_local, all_day, duration_days)
-                VALUES (:e, :s, :s, :d, :a, :dur)
-            """),
-            {"e": event_id, "s": starts, "d": day, "a": all_day, "dur": duration},
+        row = Listing(
+            source="test",
+            source_event_id=title,
+            lang_primary="de",
+            title_de=title,
+            title_en="",
+            lat=VIENNA.latitude,
+            lon=VIENNA.longitude,
+            first_seen_run="test-run",
+        )
+        db.add(row)
+        db.flush()
+        db.add(
+            Occurrence(
+                listing_id=row.id,
+                start_utc=starts,
+                # A wall-clock column: naive, or Postgres casts it through the
+                # session timezone and shifts the value it exists to preserve.
+                start_local=starts.replace(tzinfo=None),
+                date_local=day,
+                all_day=all_day,
+                duration_days=duration,
+            )
         )
         db.commit()
-        return event_id
+        return row.id
 
     return _make
 

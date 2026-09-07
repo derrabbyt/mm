@@ -132,7 +132,8 @@ Which modules each router composes:
 | `accounts`, `demo` | nothing |
 
 A module gets a `public.py` when something actually crosses into it; `events`,
-`demo`, `geodata`, `poi` and `matrix` have no consumers yet and so have none.
+`demo`, `geocoding`, `geodata`, `poi` and `matrix` have no consumers yet and so
+have none.
 Every arrow above now leaves from a `router.py` - no service imports anything
 outside its own module.
 
@@ -150,7 +151,8 @@ nothing but the database:
 geodata ──┬──► matrix ──► rendezvous          OSM extract + GTFS feed,
           └──► poi                            put in shared storage
 
-activity-loader ──► events tables ──► events   event listings, another repo
+scrape-events ──► content.listings ──► events   event listings, scraped
+                                                from twenty-one sites
 ```
 
 `matrix` and `poi` both read what `geodata` has put in shared storage rather
@@ -195,8 +197,9 @@ return `Meetup` and `MeetupParticipant`, and that made every column of those
 tables part of its public promise by accident.
 
 Models stay in their module either way. Where a model lives answers "who is
-allowed to write this?", which matters most for `events`, whose tables this
-project only reads. Alembic is not a reason to centralise them
+allowed to write this?" - which is why the geocoding cache is declared in
+`geocoding` rather than in `events`, the module that will fill it. Alembic is
+not a reason to centralise them
 (`app/metadata.py` handles that) and neither are cross-module foreign keys,
 which SQLAlchemy resolves by table name rather than by import.
 
@@ -294,16 +297,11 @@ which is the point of having stubbed them:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — scrapes event listings, owns and writes `events`, `occurrences` and nine more tables | the `scrape-events` job in `modules/events` | `events` owns those tables: real models, real migrations, and `SCRAPER_TABLES` in `migrations/env.py` goes away along with the `include_object` branch that reads it |
+| **activity-loader** — the twenty-one Source adapters and the deduplication pass | the `scrape-events` job in `modules/events` | the tables are already here: `content.listings`, `content.occurrences` and three more, with real models and real migrations. What is left to move is the scraping itself |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
-Three things in the codebase read as permanent today and are not:
+One thing in the codebase reads as permanent today and is not:
 
-- `modules/events/models.py` maps a chosen subset of columns and says never to
-  write through them. After absorption that subset becomes the schema.
-- `migrations/env.py` carries an eleven-table exclusion list. It is the only
-  thing standing between autogenerate and a migration that drops another
-  project's data - and it disappears entirely.
 - `app/data/ttm_backend_integration.md` reads as an integration guide with an
   external producer. It becomes an internal format note.
 

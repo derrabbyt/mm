@@ -10,7 +10,7 @@ from sqlalchemy.schema import SchemaItem
 # for each table.
 from app import metadata  # noqa: F401
 from app.core.config import settings
-from app.db.base import Base
+from app.db.base import CONTENT_SCHEMA, Base
 
 config = context.config
 
@@ -19,44 +19,41 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# The schemas this project owns. `None` is how Alembic names the connection's
+# default schema, which is `public` here; PostGIS's own tiger, tiger_data and
+# topology schemas are on the search path but are not ours to migrate.
+OWNED_SCHEMAS = frozenset({None, "public", CONTENT_SCHEMA})
 
-# Tables written by the activity-loader event scraper, which shares this database
-# and manages its own schema. They are not in Base.metadata, so autogenerate would
-# emit a DROP for every one of them. Keep in sync with that project's store.py.
-# Goes away once activity-loader moves in and these tables get real models.
-SCRAPER_TABLES = frozenset(
-    {
-        "events",
-        "occurrences",
-        "cards",
-        "dedup_members",
-        "venue_links",
-        "geocode_cache",
-        "quarantine",
-        "source_runs",
-        "alert_state",
-        "eventloader_meta",
-    }
-)
+
+def include_name(name: str | None, type_: str, parent_names: dict[str, Any]) -> bool:
+    """Restrict autogenerate to the schemas this project owns.
+
+    `include_schemas` makes Alembic reflect every schema in the database rather
+    than just the default one, which is what lets it see `content` - and also
+    what would otherwise let it see PostGIS's.
+    """
+    if type_ == "schema":
+        return name in OWNED_SCHEMAS
+    return True
 
 
 def include_object(
     object: SchemaItem, name: str | None, type_: str, reflected: bool, compare_to: Any
 ) -> bool:
-    """Hide tables this project does not own from autogenerate.
+    """Hide PostGIS's own table from autogenerate.
 
-    spatial_ref_sys is a real public-schema table installed by PostGIS, so pinning
-    search_path (below) does not hide it from reflection. The scraper's tables are
-    the same problem from a different direction: another writer owns them.
+    `spatial_ref_sys` is a real table in `public`, installed by the extension,
+    so filtering by schema does not reach it.
     """
-    foreign = name == "spatial_ref_sys" or name in SCRAPER_TABLES
-    return not (type_ == "table" and foreign)
+    return not (type_ == "table" and name == "spatial_ref_sys")
 
 
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.database_url,
         target_metadata=target_metadata,
+        include_schemas=True,
+        include_name=include_name,
         include_object=include_object,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -67,12 +64,16 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    # The postgis/postgis image adds tiger/tiger_data/topology to search_path,
-    # which makes their tables visible to reflection even though
-    # include_schemas is off - pin it to public at the session level so
-    # autogenerate only ever sees our own tables. Setting this via a statement
-    # on the connection instead would open a transaction that never gets
-    # committed, silently rolling back the whole migration on connection close.
+    # search_path stays pinned to `public` alone, and `content` is reached by
+    # `include_schemas` instead. Reflection of the default schema returns
+    # whatever is *visible* on the search path, so a schema named here is
+    # reflected twice - once unqualified and once under its own name - and
+    # autogenerate reads the unqualified copy as a table to drop. That is also
+    # why the postgis image's tiger/tiger_data/topology must stay off it.
+    #
+    # Setting this with a statement on the connection instead would open a
+    # transaction that never gets committed, silently rolling back the whole
+    # migration on connection close.
     connectable = create_engine(
         settings.database_url,
         poolclass=pool.NullPool,
@@ -83,6 +84,8 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            include_schemas=True,
+            include_name=include_name,
             include_object=include_object,
         )
 

@@ -14,3 +14,9 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+# Bulk-ingested content - scraped listings and everything derived from them -
+# lives apart from the application's own tables, so the scraping job can connect
+# as a role with no write grant on `public`. See docs/adr/0001-content-schema.md.
+CONTENT_SCHEMA = "content"

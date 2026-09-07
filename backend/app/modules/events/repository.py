@@ -23,15 +23,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ...core.exceptions import EventsLoadError
-from .models import Event, Occurrence
+from .models import Listing, Occurrence
 
 
 def _distance_meters(latitude: float, longitude: float) -> ColumnElement[float]:
-    """Great-circle metres from every event row to this point. The events table
-    stores plain lat/lon columns, so there is no geometry index to hit; at a few
-    thousand rows the sequential scan is not worth a schema we do not own."""
+    """Great-circle metres from every Listing to this point. Listings store plain
+    lat/lon columns rather than a geometry, so there is no spatial index to hit;
+    at a few thousand live rows the sequential scan has not been worth one."""
     return func.ST_DistanceSphere(
-        func.ST_MakePoint(Event.lon, Event.lat),
+        func.ST_MakePoint(Listing.lon, Listing.lat),
         func.ST_MakePoint(longitude, latitude),
     ).cast(Float)
 
@@ -45,15 +45,15 @@ def find_near(
     not_before: datetime,
     radius_meters: int,
     limit: int,
-) -> Sequence[Row[tuple[Event, datetime, bool, float]]]:
-    """Events showing on `day` within `radius_meters` of the point, nearest first.
+) -> Sequence[Row[tuple[Listing, datetime, bool, float]]]:
+    """Listings showing on `day` within `radius_meters` of the point, nearest first.
 
-    Each row is the event, the start of the one occurrence that matters, whether
-    that occurrence is all-day, and its distance in metres.
+    Each row is the Listing, the start of the one Occurrence that matters,
+    whether that Occurrence is all-day, and its distance in metres.
     """
     distance = _distance_meters(latitude, longitude)
 
-    # An occurrence is a *range*, not a day: a museum open all year is one row
+    # An Occurrence is a *range*, not a day: a museum open all year is one row
     # dated 1 January with duration_days=364, so matching date_local alone hides
     # it for the other 364 days.
     covers_day = and_(
@@ -76,7 +76,7 @@ def find_near(
             or_(Occurrence.all_day, ongoing).label("all_day"),
         )
         .where(
-            Occurrence.event_id == Event.id,
+            Occurrence.listing_id == Listing.id,
             covers_day,
             # An exhibition open all day is still worth showing at 20:00; a
             # concert that started at 18:00 is not. All-day rows carry a
@@ -91,16 +91,16 @@ def find_near(
 
     query = (
         select(
-            Event,
+            Listing,
             next_occurrence.c.start_local,
             next_occurrence.c.all_day,
             distance.label("distance_meters"),
         )
         .join(next_occurrence, true())
         .where(
-            Event.disappeared_at.is_(None),
-            Event.lat.is_not(None),
-            Event.lon.is_not(None),
+            Listing.disappeared_at.is_(None),
+            Listing.lat.is_not(None),
+            Listing.lon.is_not(None),
             distance <= radius_meters,
         )
         .order_by(distance, next_occurrence.c.start_local)
