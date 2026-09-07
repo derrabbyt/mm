@@ -25,9 +25,15 @@ FALLBACK_TIMEZONE = "Europe/Vienna"
 
 MINUTES_PER_DAY = 24 * 60
 
-# Departure hour -> matrix key, per class of day. Saturday and Sunday get their
-# own tables even though the current bake wrote them byte-identical, so a real
-# Sunday schedule later needs no change here.
+# Departure hour -> matrix key, per class of day.
+#
+# The Saturday and Sunday matrices in the shipped dataset are byte-identical,
+# which is a defect in that bake, not a property of the city: the Saturday
+# departure was set to 2026-08-15, a public holiday, on which Wiener Linien runs
+# Sunday service. Its own feed defines 34 Saturday-only and 38 Sunday-only
+# service patterns and runs 15% more trips on a Saturday, so every Saturday
+# rendezvous is currently computed from Sunday timetables. The tables below are
+# right; the data behind two of them is not, until the next bake.
 WEEKDAY_TRANSIT_KEYS = {
     8: "transit_wed08",
     12: "transit_wed12",
