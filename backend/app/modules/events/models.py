@@ -12,7 +12,16 @@ and this module takes the tables over.
 
 from datetime import date, datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ...db.base import Base
@@ -58,7 +67,12 @@ class Event(Base):
 
 
 class Occurrence(Base):
-    """One dated instance of an event; a run of five nights is five rows."""
+    """One dated instance of an event.
+
+    Not one row per day: a five-night run is five rows, but a museum open all
+    year is a single row dated at its start with `duration_days` set to 364.
+    Anything filtering by day has to treat this as a range.
+    """
 
     __tablename__ = "occurrences"
 
@@ -78,3 +92,7 @@ class Occurrence(Base):
 
     # All-day rows are stamped midnight; their start time means nothing.
     all_day: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    # Days the run covers beyond date_local. 0 for a single day, 364 for a
+    # museum open all year - 750 rows carry a non-zero value.
+    duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
