@@ -23,11 +23,11 @@ real geocoding later.
 
 import json
 from collections.abc import Iterator
-from datetime import datetime
 from typing import Any
 
 from .. import region
 from ..scraped import RawListing, RawOccurrence
+from .dates import parse_iso_datetime
 from .spec import FetchContext, RawPayload, SourceSpec
 
 SPEC = SourceSpec(
@@ -56,18 +56,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
     yield RawPayload(url=response.url, body=response.body, kind="partylist")
 
 
-def _parse_datetime(value: Any) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(str(value))
-    except ValueError:
-        try:
-            return datetime.fromisoformat(str(value)[:19])
-        except ValueError:
-            return None
-
-
 def _decimals(value: float) -> int:
     text = f"{value!r}"
     return len(text.partition(".")[2].rstrip("0")) if "." in text else 0
@@ -92,7 +80,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
     for item in data.get("partylist") or []:
         party_id = item.get("id")
-        start = _parse_datetime(item.get("dateStart"))
+        start = parse_iso_datetime(item.get("dateStart"))
         if not party_id or start is None:
             continue
 
@@ -106,7 +94,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         yield RawListing(
             source_event_id=str(party_id),
             occurrences=[
-                RawOccurrence(start=start, end=_parse_datetime(item.get("dateEnd")))
+                RawOccurrence(start=start, end=parse_iso_datetime(item.get("dateEnd")))
             ],
             url=item.get("urlPartyHtml") or None,
             origin_url=item.get("urlOrganizer") or None,

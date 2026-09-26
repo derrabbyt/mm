@@ -1,0 +1,486 @@
+{
+ "type": "events",
+ "teaserTextMarkup": "",
+ "items": [
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/parkhotel_schoenbrunn.jpg",
+   "location": "Gastronomie im Parkhotel Schönbrunn",
+   "dates": [
+    "2027-01-23"
+   ],
+   "id": "935804",
+   "title": "Viennese Rainbow Ball 2027",
+   "subtitle": "at the Parkhotel Schönbrunn",
+   "category": "LGBTIQ+",
+   "categoryIcon": "rainbow",
+   "url": "/en/now-on/events/viennese-rainbow-ball-2026-935804",
+   "tags": [
+    896986,
+    897000
+   ]
+  },
+  {
+   "vccBenefit": true,
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/staatsoper_aussenansicht_bei_nacht.jpg",
+   "location": "Vienna State Opera",
+   "dates": [
+    "2026-08-17",
+    "2026-08-18",
+    "2026-08-19",
+    "2026-08-20",
+    "2026-08-21",
+    "2026-08-22",
+    "2026-08-24",
+    "2026-08-25",
+    "2026-08-26",
+    "2026-08-27"
+   ],
+   "id": "1103382",
+   "title": "Vienna Mozart Concerts",
+   "subtitle": "The Vienna Mozart Orchestra at the Vienna State Opera",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/vienna-mozart-concerts-1103382",
+   "tags": [
+    896984,
+    897002
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimages15diversityball_copyrightchristinemiess_web_018-1920x1280.jpg",
+   "location": "Vienna City Hall",
+   "dates": [
+    "2026-09-05"
+   ],
+   "id": "935678",
+   "title": "Diversity Ball 2026",
+   "subtitle": "in the magnificent ballroom of Vienna City Hall",
+   "category": "LGBTIQ+",
+   "categoryIcon": "rainbow",
+   "url": "/en/now-on/events/diversity-ball-2025-935678",
+   "tags": [
+    896986
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagessilvestergala-rathaus-2017-1_1.jpg",
+   "location": "Vienna City Hall",
+   "dates": [
+    "2026-12-31"
+   ],
+   "id": "1045938",
+   "title": "New Year's Eve Gala at Vienna City Hall",
+   "subtitle": "A stylish New Year's Eve celebration in the magnificent ballroom of Vienna City Hall.",
+   "category": "Typically Viennese",
+   "categoryIcon": "ribbonstar",
+   "url": "/en/now-on/events/new-years-eve-gala-at-vienna-city-hall-1045938",
+   "tags": [
+    897000
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagesvienna_night_run.jpg",
+   "location": "Ring Boulevard",
+   "dates": [
+    "2026-09-17"
+   ],
+   "id": "975128",
+   "title": "Vienna Night Run 2026",
+   "subtitle": "One lap around Vienna's Ringstrasse at night",
+   "category": "Sports",
+   "categoryIcon": "baseball",
+   "url": "/en/now-on/events/vienna-night-run-2025-975128",
+   "tags": [
+    896996,
+    897006
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagessilvester_feuerwerk.jpg",
+   "dates": [
+    "2026-12-31"
+   ],
+   "id": "1046684",
+   "title": "New Year's Eve Trail",
+   "subtitle": "On December 31, Vienna's city center will be transformed into a unique party area.",
+   "category": "Festivals, Parties, and Shows",
+   "categoryIcon": "stars",
+   "url": "/en/now-on/events/new-years-eve-trail-2024-1046684",
+   "tags": [
+    896974,
+    896994
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagesneujahrskonzert-2020-der-wiener-philharmoniker-im-golden_003.jpg",
+   "location": "Musikverein",
+   "dates": [
+    "2027-01-01"
+   ],
+   "id": "935734",
+   "title": "New Year's Concert of the Vienna Philharmonic",
+   "subtitle": "New Year' s Concert of the Vienna Philharmonic",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/new-year-s-concert-of-the-vienna-philharmonic-2-935734",
+   "tags": [
+    896984
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagesneujahrskonzert-2020-der-wiener-philharmoniker-im-golden_003.jpg",
+   "location": "Musikverein",
+   "dates": [
+    "2026-12-30"
+   ],
+   "id": "935736",
+   "title": "New Year's Concert of the Vienna Philharmonic - Preview Performance",
+   "subtitle": "New Year's Concert of the Vienna Philharmonic - Preview Performance",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/new-year-s-concert-of-the-vienna-philharmonic-preview-performanc-935736",
+   "tags": [
+    896984
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagesneujahrskonzert-2020-der-wiener-philharmoniker-im-golden_003.jpg",
+   "location": "Musikverein",
+   "dates": [
+    "2026-12-31"
+   ],
+   "id": "935744",
+   "title": "New Year's Eve Concert of the Vienna Philharmonic",
+   "subtitle": "New Year's Eve Concert of the Vienna Philharmonic",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/new-years-eve-concert-of-the-vienna-philharmonic-935744",
+   "tags": [
+    896984
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimageswiener_opernball.jpg",
+   "location": "Vienna State Opera",
+   "dates": [
+    "2027-02-04"
+   ],
+   "id": "936204",
+   "title": "Vienna Opera Ball 2027",
+   "subtitle": "A glittering ball night at the Vienna State Opera",
+   "category": "Typically Viennese",
+   "categoryIcon": "ribbonstar",
+   "url": "/en/now-on/events/vienna-opera-ball-2025-936204",
+   "tags": [
+    897000
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagestrumpets_in_concert__foto_lona_barce_1200x600_allevents.jpg",
+   "location": "Minoriten Church",
+   "dates": [
+    "2026-12-13",
+    "2026-12-17",
+    "2026-12-20"
+   ],
+   "id": "1045936",
+   "title": "Trumpets in Concert - A very special Christmas",
+   "subtitle": "Christmas trumpet sounds in the Minorite Church",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/trumpets-in-concert-a-very-special-christmas-1045936",
+   "tags": [
+    896984,
+    897006,
+    897010
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/Conni-Das-Musical_%28c%29%20Carlsen%20Verlag%20GmbH.jpg",
+   "location": "Wiener Stadthalle",
+   "dates": [
+    "2026-09-06"
+   ],
+   "id": "935958",
+   "title": "Conni - Das Musical ",
+   "subtitle": "Only in German!",
+   "category": "Musical, Dance and Performance",
+   "categoryIcon": "musicmask",
+   "url": "/en/now-on/events/conni-das-musical-935958",
+   "tags": [
+    896990,
+    897006
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimageswien_in_schwarz_1.jpg",
+   "startDate": "2026-10-23",
+   "endDate": "2026-10-26",
+   "id": "955874",
+   "title": "Vienna in Black 2026",
+   "subtitle": "The event for all fetish enthusiasts.",
+   "category": "LGBTIQ+",
+   "categoryIcon": "rainbow",
+   "url": "/en/now-on/events/vienna-in-black-2025-955874",
+   "tags": [
+    896986
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagescream_reaktor.jpg",
+   "location": "Reaktor",
+   "startDate": "2026-11-28",
+   "endDate": "2026-11-29",
+   "id": "936098",
+   "title": "\"Cream\" Vienna",
+   "subtitle": "Design, art, wine, culinary delights",
+   "category": "Markets and Fairs",
+   "categoryIcon": "shopping-bag",
+   "url": "/en/now-on/events/cream-vienna-936098",
+   "tags": [
+    896988
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagesviennale.jpg",
+   "startDate": "2026-10-22",
+   "endDate": "2026-11-03",
+   "id": "936234",
+   "title": "Viennale 2026",
+   "subtitle": "Vienna International Film Festival",
+   "category": "Festivals, Parties, and Shows",
+   "categoryIcon": "stars",
+   "url": "/en/now-on/events/viennale-2025-936234",
+   "tags": [
+    896974,
+    896978
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimageskaiser_wiesn.jpg",
+   "location": "Prater",
+   "startDate": "2026-09-24",
+   "endDate": "2026-10-11",
+   "id": "936180",
+   "title": "Viennese Kaiser Wiesn 2026",
+   "subtitle": "in the Vienna Prater",
+   "category": "Festivals, Parties, and Shows",
+   "categoryIcon": "stars",
+   "url": "/en/now-on/events/viennese-kaiser-wiesn-2025-936180",
+   "tags": [
+    896974
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimageswaves_vienna_2023_2-p-1080.png",
+   "startDate": "2026-10-01",
+   "endDate": "2026-10-03",
+   "id": "935666",
+   "title": "Waves Vienna 2026",
+   "subtitle": "The club and showcase festival at various venues in Vienna.",
+   "category": "Festivals, Parties, and Shows",
+   "categoryIcon": "stars",
+   "url": "/en/now-on/events/waves-vienna-2025-935666",
+   "tags": [
+    896974
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/Rock%20The%20Opera.jpg",
+   "location": "Vienna State Opera",
+   "startDate": "2026-08-14",
+   "endDate": "2026-08-15",
+   "id": "935988",
+   "title": "Rock The Opera",
+   "subtitle": "Queen, Pink Floyd, AC/DC, Deep Purple, U2, Metallica at the Vienna State Opera",
+   "category": "Rock, Pop, Jazz and more",
+   "categoryIcon": "musicalternative",
+   "url": "/en/now-on/events/rock-the-opera-935988",
+   "tags": [
+    896994
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagesneubaugasse_flaniermarkt.jpg",
+   "location": "Neubaugasse",
+   "startDate": "2026-09-25",
+   "endDate": "2026-09-26",
+   "id": "936042",
+   "title": "Neubaugasse Flaniermarkt",
+   "subtitle": "Neubaugasse captivates with art, music, and cuisine",
+   "category": "Markets and Fairs",
+   "categoryIcon": "shopping-bag",
+   "url": "/en/now-on/events/promenade-and-flea-market-in-the-neubaugasse-936042",
+   "tags": [
+    896988
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagesafrika_tage.jpg",
+   "location": "Danube Island",
+   "startDate": "2026-08-14",
+   "endDate": "2026-08-24",
+   "id": "936084",
+   "title": "Afrika Tage Wien 2025",
+   "subtitle": "A vibrant African gathering place on the Danube Island",
+   "category": "Festivals, Parties, and Shows",
+   "categoryIcon": "stars",
+   "url": "/en/now-on/events/afrika-tage-wien-2025-936084",
+   "tags": [
+    896974,
+    897006
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/partnerclient/event/musikverein_goldener-saal.jpg",
+   "location": "Musikverein",
+   "startDate": "2026-09-30",
+   "endDate": "2026-10-01",
+   "id": "1122712",
+   "title": "Wiener Symphoniker • Popelka",
+   "subtitle": "Gustav Mahler: Symphony No. 9 in D Major",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/wiener-symphoniker-10-1122712",
+   "tags": [
+    896984
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/partnerclient/event/musikverein_goldener-saal.jpg",
+   "location": "Musikverein",
+   "startDate": "2026-10-23",
+   "endDate": "2026-10-25",
+   "id": "1123012",
+   "title": "Wiener Symphoniker",
+   "subtitle": "Petr Popelka • Yuja Wang",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/wiener-symphoniker-12-1123012",
+   "tags": [
+    896984
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/httpseventswieninfomediaimagesmv_grossersaal1_1.jpg",
+   "location": "Musikverein",
+   "startDate": "2026-11-08",
+   "endDate": "2026-11-09",
+   "id": "1123036",
+   "title": "Wiener Symphoniker",
+   "subtitle": "Maxime Pascal • Andrew Staples",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/wiener-symphoniker-15-1123036",
+   "tags": [
+    896984
+   ]
+  },
+  {
+   "imageUrl": "https://imxplatform-cust-wtv.fsn1.your-objectstorage.com/media/partnerclient/event/musikverein_goldener-saal.jpg",
+   "location": "Musikverein",
+   "startDate": "2026-11-28",
+   "endDate": "2026-11-29",
+   "id": "1123156",
+   "title": "Tonkünstler-Orchester Niederösterreich",
+   "subtitle": "Fabien Gabel • Alisa Weilerstein",
+   "category": "Classic Concerts",
+   "categoryIcon": "violin",
+   "url": "/en/now-on/events/tonkuenstler-orchester-niederoesterreich-13-1123156",
+   "tags": [
+    896984
+   ]
+  }
+ ],
+ "filters": [
+  {
+   "id": 934636,
+   "title": "Period",
+   "filterTags": [],
+   "viewType": "events_period",
+   "collapsed": false,
+   "custom": true,
+   "infoText": ""
+  },
+  {
+   "id": 934638,
+   "title": "Category",
+   "filterTags": [
+    {
+     "title": "Culinary Offerings",
+     "id": 1060516,
+     "childTags": []
+    },
+    {
+     "title": "Exhibitions",
+     "id": 896982,
+     "childTags": []
+    },
+    {
+     "title": "Festivals, Parties, and Shows",
+     "id": 896974,
+     "childTags": []
+    },
+    {
+     "title": "Film and Summer Cinema",
+     "id": 896978,
+     "childTags": []
+    },
+    {
+     "title": "Guided Tours and Round Trips",
+     "id": 896980,
+     "childTags": []
+    },
+    {
+     "title": "Classic Concerts",
+     "id": 896984,
+     "childTags": []
+    },
+    {
+     "title": "LGBTIQ+",
+     "id": 896986,
+     "childTags": []
+    },
+    {
+     "title": "Musical, Dance and Performance",
+     "id": 896990,
+     "childTags": []
+    },
+    {
+     "title": "Markets and Fairs",
+     "id": 896988,
+     "childTags": []
+    },
+    {
+     "title": "Opera and Operetta",
+     "id": 896992,
+     "childTags": []
+    },
+    {
+     "title": "Rock, Pop, Jazz and more",
+     "id": 896994,
+     "childTags": []
+    },
+    {
+     "title": "Sports",
+     "id": 896996,
+     "childTags": []
+    },
+    {
+     "title": "Theatre and Cabaret",
+     "id": 896998,
+     "childTags": []
+    },
+    {
+     "title": "Typically Viennese",
+     "id": 897000,
+     "childTags": []
+    }
+   ],
+   "viewType": "checkbox",
+   "collapsed": false,
+   "custom": false,
+   "infoText": ""
+  }
+ ]
+}

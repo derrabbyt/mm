@@ -44,6 +44,10 @@ contract in `sources/spec.py`. They are discovered rather than listed, so adding
 a Source is adding a file. Nothing in there holds a session, and the boundary
 rules apply to it exactly as they do to the module's top level.
 
+What the adapters share sits beside them rather than at the module's top level,
+because only they use it: `sources/http.py` is the client every fetch goes
+through. A helper lands here when the Source that needs it does, not before.
+
 The layering inside a module is described in `auth-and-db-patterns.md`.
 
 ## The two entry points
@@ -314,7 +318,7 @@ which is the point of having stubbed them:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — twenty of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables and the scrape are already here: `content.listings` and four more with real models and real migrations, one Source running end to end, and the contract every other Source follows in `events/sources/spec.py`. What is left is the other twenty Sources, geocoding, and deduplicating Listings into Events |
+| **activity-loader** — fifteen of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape and six of the twenty-one Sources are here: `content.listings` and four more with real models and real migrations, and the contract every Source follows in `events/sources/spec.py`. What is left is the other fifteen Sources, geocoding, and deduplicating Listings into Events |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
 One thing in the codebase reads as permanent today and is not:
