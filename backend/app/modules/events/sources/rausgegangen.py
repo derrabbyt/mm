@@ -25,7 +25,6 @@ it is a choice rather than a deduction. Their `Disallow` rules are a different
 matter and are honoured as written.
 """
 
-import json
 import logging
 from collections.abc import Iterator
 from typing import Any
@@ -33,6 +32,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from ..scraped import RawListing, RawOccurrence
+from . import jsonld
 from .dates import parse_iso_datetime
 from .http import FetchError
 from .spec import FetchContext, RawPayload, SourceSpec
@@ -126,29 +126,7 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
         )
 
 
-def _iter_events(node: Any) -> Iterator[dict[str, Any]]:
-    """Walk arbitrary JSON-LD looking for Event nodes.
-
-    "Event" here is schema.org's word, and one node is one Listing to us.
-    """
-    if isinstance(node, dict):
-        if str(node.get("@type", "")).endswith("Event"):
-            yield node
-        for value in node.values():
-            yield from _iter_events(value)
-    elif isinstance(node, list):
-        for value in node:
-            yield from _iter_events(value)
-
-
-def _first_offer(offers: Any) -> dict[str, Any] | None:
-    """The one Offer to read. JSON-LD allows a list or a single object."""
-    if isinstance(offers, list):
-        offers = offers[0] if offers else None
-    return offers if isinstance(offers, dict) else None
-
-
-def _price(offers: Any) -> tuple[float | None, str | None, bool | None]:
+def _price(offer: dict[str, Any]) -> tuple[float | None, str | None, bool | None]:
     """Extract price, currency and free-ness from an Offer.
 
     `price: "0.00"` is **not** treated as free. The site emits it as a
@@ -157,8 +135,7 @@ def _price(offers: Any) -> tuple[float | None, str | None, bool | None]:
     here, both become unknown: showing "free" on a paid show is a worse error
     than showing no price at all.
     """
-    offer = _first_offer(offers)
-    if offer is None:
+    if not offer:
         return None, None, None
     raw = offer.get("price")
     currency = offer.get("priceCurrency")
@@ -180,56 +157,42 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         return
 
     category = payload.meta.get("category")
-    soup = BeautifulSoup(payload.text, "lxml")
-    for script in soup.find_all("script", attrs={"type": "application/ld+json"}):
-        try:
-            data = json.loads(script.string or "{}")
-        except json.JSONDecodeError:
+
+    for node in jsonld.events_in(payload.text):
+        url = node.get("url") or payload.url
+        source_event_id = url.rstrip("/").rsplit("/", 1)[-1]
+        if not source_event_id:
             continue
 
-        for node in _iter_events(data):
-            url = node.get("url") or payload.url
-            source_event_id = url.rstrip("/").rsplit("/", 1)[-1]
-            if not source_event_id:
-                continue
+        start = parse_iso_datetime(node.get("startDate"))
+        if start is None:
+            continue
+        end = parse_iso_datetime(node.get("endDate"))
 
-            start = parse_iso_datetime(node.get("startDate"))
-            if start is None:
-                continue
-            end = parse_iso_datetime(node.get("endDate"))
+        where = jsonld.place(node)
+        offer = jsonld.mapping(node.get("offers"))
+        price, currency, is_free = _price(offer)
+        ticket_url = offer.get("url")
+        image = jsonld.first(node.get("image"))
 
-            location = node.get("location") or {}
-            if isinstance(location, list):
-                location = location[0] if location else {}
-            address = location.get("address") if isinstance(location, dict) else {}
-            address = address if isinstance(address, dict) else {}
-
-            price, currency, is_free = _price(node.get("offers"))
-            offer = _first_offer(node.get("offers"))
-            ticket_url = offer.get("url") if offer else None
-
-            image = node.get("image")
-            if isinstance(image, list):
-                image = image[0] if image else None
-
-            yield RawListing(
-                source_event_id=source_event_id,
-                occurrences=[RawOccurrence(start=start, end=end)],
-                url=url,
-                origin_url=ticket_url,
-                title=node.get("name"),
-                description=node.get("description"),
-                lang="en",
-                venue_name=location.get("name") if isinstance(location, dict) else None,
-                street=address.get("streetAddress"),
-                postcode=address.get("postalCode"),
-                city=address.get("addressLocality") or "Wien",
-                country=address.get("addressCountry") or "AT",
-                categories_raw=[category] if category else [],
-                price_min=price,
-                price_max=price,
-                price_currency=currency,
-                is_free=is_free,
-                ticket_url=ticket_url,
-                image_url=image if isinstance(image, str) else None,
-            )
+        yield RawListing(
+            source_event_id=source_event_id,
+            occurrences=[RawOccurrence(start=start, end=end)],
+            url=url,
+            origin_url=ticket_url,
+            title=node.get("name"),
+            description=node.get("description"),
+            lang="en",
+            venue_name=where["venue_name"],
+            street=where["street"],
+            postcode=where["postcode"],
+            city=where["city"] or "Wien",
+            country=where["country"] or "AT",
+            categories_raw=[category] if category else [],
+            price_min=price,
+            price_max=price,
+            price_currency=currency,
+            is_free=is_free,
+            ticket_url=ticket_url,
+            image_url=image if isinstance(image, str) else None,
+        )

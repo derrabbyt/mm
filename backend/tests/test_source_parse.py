@@ -14,15 +14,22 @@ import pytest
 
 from app.modules.events.scraped import RawListing
 from app.modules.events.sources import (
+    austria_info,
+    dates,
     discover,
+    event_spotter,
+    eventfinder,
     events_at,
     goabase,
     goodnight,
     rausgegangen,
+    songkick,
     thousandthings,
+    warda,
     wien_info,
 )
 from app.modules.events.sources.dates import parse_iso_datetime
+from app.modules.events.sources.http import encode_query
 from app.modules.events.sources.spec import RawPayload
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -406,10 +413,251 @@ def test_an_offset_without_its_colon_is_still_read():
     assert parsed.utcoffset() == dt.timedelta(hours=2)
 
 
+def test_a_trailing_z_is_read_as_utc():
+    """Two Sources write `Z` rather than `+00:00`."""
+    parsed = parse_iso_datetime("2026-08-10T09:00:00Z")
+    assert parsed is not None
+    assert parsed.utcoffset() == dt.timedelta(0)
+
+
+def test_only_a_trailing_z_is_rewritten():
+    """Replacing every `Z` would corrupt a value that merely contains one."""
+    assert parse_iso_datetime("2026-08-10T09:00:00+02:00Z") is not None
+    # A timestamp-shaped prefix still parses; the point is that the Z in the
+    # middle of a value is not turned into an offset.
+    assert parse_iso_datetime("ZZZ") is None
+
+
+def test_a_timestamp_with_no_seconds_is_still_read():
+    """One Source truncates to the minute, which the 19-character retry misses."""
+    parsed = parse_iso_datetime("2026-08-10T09:00")
+    assert parsed is not None
+    assert (parsed.hour, parsed.minute) == (9, 0)
+
+
 def test_an_unreadable_timestamp_is_none_rather_than_a_guess():
     assert parse_iso_datetime("next Tuesday") is None
     assert parse_iso_datetime(None) is None
     assert parse_iso_datetime("") is None
+
+
+class TestAustriaInfo:
+    @pytest.fixture
+    def listings(self) -> list[RawListing]:
+        return list(
+            austria_info.parse(payload("austria_info", "query.json", "query", page=0))
+        )
+
+    def test_parses_hits(self, listings):
+        assert listings
+
+    def test_the_cross_locale_id_is_used(self, listings):
+        """`objectID` differs per locale; `story_id` is the identity across them."""
+        raw = json.loads(
+            (FIXTURES / "austria_info" / "query.json").read_text(encoding="utf-8")
+        )
+        story_ids = {str(hit["story_id"]) for hit in raw["hits"] if hit.get("story_id")}
+        assert {one.source_event_id for one in listings} <= story_ids
+
+    def test_a_long_run_stays_a_span(self, listings):
+        """An institution runs for months; that is a span, not a fabricated day."""
+        assert [one for one in listings if one.occurrences[0].end]
+
+    def test_dates_are_day_level(self, listings):
+        """The index stores 00:00 throughout, so these are dates, not datetimes."""
+        for one in listings:
+            assert not isinstance(one.occurrences[0].start, dt.datetime)
+
+    def test_the_language_facet_is_pinned(self):
+        """Without it the index returns ~10 locale copies of everything."""
+        assert austria_info.LOCALE == "en-gb"
+
+
+class TestEventfinder:
+    @pytest.fixture
+    def listings(self) -> list[RawListing]:
+        return list(eventfinder.parse(payload("eventfinder", "search.html", page=1)))
+
+    def test_parses_results(self, listings):
+        assert len(listings) == 8
+
+    def test_the_time_comes_from_the_url_slug(self, listings):
+        """The slug encodes `am-YYYY-MM-DD-um-HH-MM`; card text is less reliable."""
+        for one in listings:
+            start = one.occurrences[0].start
+            assert isinstance(start, dt.datetime)
+            assert start.year >= 2026
+
+    def test_ids_are_numeric(self, listings):
+        assert all(one.source_event_id.isdigit() for one in listings)
+
+    def test_a_carousel_card_is_not_a_result(self):
+        """A card inside `.splide__slide` is a recommendation, not a search hit.
+
+        Built here rather than read from the fixture, which was trimmed to
+        results only - so the upstream version of this test could never fail.
+        """
+        html = """
+        <div class="splide__slide">
+          <div class="card"><div class="card-body">
+            <h3 class="titel"><a href="/veranstaltung/111/x-am-2026-08-15-um-20-00-uhr/">Recommended</a></h3>
+          </div></div>
+        </div>
+        <div class="card"><div class="card-body">
+          <h3 class="titel"><a href="/veranstaltung/222/y-am-2026-08-15-um-21-00-uhr/">A real result</a></h3>
+        </div></div>
+        """
+        found = list(
+            eventfinder.parse(
+                RawPayload(url="fixture://inline", body=html.encode(), meta={"page": 1})
+            )
+        )
+        assert [one.title for one in found] == ["A real result"]
+
+    def test_the_spec_says_cookies_are_needed(self):
+        """The result set lives server-side against the session."""
+        assert eventfinder.SPEC.use_cookies is True
+
+
+class TestEventSpotter:
+    @pytest.fixture
+    def listings(self) -> list[RawListing]:
+        return list(event_spotter.parse(payload("event_spotter", "listing.html")))
+
+    def test_parses_a_listing_with_no_detail_fetch(self, listings):
+        assert listings, "the JSON-LD is on the listing page itself"
+
+    def test_the_origin_venue_page_is_kept(self, listings):
+        """`sameAs` is the venue page it was scraped from - an exact key."""
+        assert any(one.origin_url for one in listings)
+
+    def test_addresses_are_present(self, listings):
+        assert any(one.street for one in listings)
+
+    def test_a_junk_city_is_rejected(self, listings):
+        """A few rows carry "0000" or a street name in `addressLocality`."""
+        for one in listings:
+            if one.city:
+                assert not one.city.isdigit()
+
+
+class TestSongkick:
+    @pytest.fixture
+    def listings(self) -> list[RawListing]:
+        return list(songkick.parse(payload("songkick", "listing.html")))
+
+    def test_parses_listings(self, listings):
+        assert listings
+
+    def test_coordinates_are_present(self, listings):
+        """`GeoCoordinates` is why these Listings need no geocoding."""
+        assert any(one.lat is not None for one in listings)
+
+    def test_the_date_filter_is_us_format(self):
+        """`filters[minDate]` takes MM/DD/YYYY; an ISO date is silently ignored."""
+        assert songkick._us_date(dt.date(2026, 8, 15)) == "08/15/2026"
+
+    def test_the_filter_brackets_stay_literal(self):
+        query = encode_query([("filters[minDate]", "08/15/2026")])
+        assert "filters[minDate]=" in query
+        assert "%5B" not in query
+
+    def test_everything_here_is_music(self, listings):
+        """The site has no per-entry category; it is all live music."""
+        assert all(one.categories_raw == ["Konzert"] for one in listings)
+
+
+class TestWarda:
+    @pytest.fixture
+    def listings(self) -> list[RawListing]:
+        return list(warda.parse(payload("warda", "detail.html", "detail")))
+
+    def test_parses_a_detail_page(self, listings):
+        assert len(listings) == 1
+
+    def test_the_date_and_time_come_from_the_date_bar(self, listings):
+        """ "Freitag 14. August 2026 Beginn: 23:00"."""
+        start = listings[0].occurrences[0].start
+        assert isinstance(start, dt.datetime)
+        assert start.hour == 23
+
+    def test_the_time_is_only_read_after_beginn(self):
+        """The date's own digits must not be read as a clock time."""
+        text = "Freitag 14. August 2026 Beginn: 23:00"
+        assert dates.parse_date(text) == dt.date(2026, 8, 14)
+        assert dates.parse_time(text.split("Beginn", 1)[1]) == dt.time(23, 0)
+
+    def test_a_dotted_date_reads_as_a_time_if_not_split_off_first(self):
+        """Which is why the time is only ever read from after "Beginn:".
+
+        warda writes the long German form, where a whole-line scan happens not to
+        collide - so this pins the reason the guard exists rather than a live
+        failure of this Source.
+        """
+        assert dates.parse_time("14.08.2026 Beginn: 23:00") == dt.time(14, 8)
+        assert dates.parse_time("Freitag 14. August 2026") is None
+
+    def test_venue_and_postcode(self, listings):
+        assert listings[0].venue_name
+        assert listings[0].postcode == "1010"
+
+    def test_a_listing_payload_yields_nothing(self):
+        assert list(warda.parse(payload("warda", "listing.html", "listing"))) == []
+
+
+class TestDateHelpers:
+    """The German listing-page dates the HTML Sources have to read."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("15. August 2026", dt.date(2026, 8, 15)),
+            ("Mi, 12. Aug 2026", dt.date(2026, 8, 12)),
+            ("2026-08-15", dt.date(2026, 8, 15)),
+            ("15.08.2026", dt.date(2026, 8, 15)),
+            # Austrian, and the ones with umlauts.
+            ("3. Jänner 2027", dt.date(2027, 1, 3)),
+            ("21. März 2026", dt.date(2026, 3, 21)),
+            ("1. Dezember 2026", dt.date(2026, 12, 1)),
+            ("nothing here", None),
+        ],
+    )
+    def test_parse_date(self, text, expected):
+        assert dates.parse_date(text, reference=dt.date(2026, 8, 10)) == expected
+
+    def test_a_missing_year_is_inferred_forward(self):
+        """A month already past means the page means next year."""
+        reference = dt.date(2026, 12, 20)
+        assert dates.parse_date("5. Jänner", reference) == dt.date(2027, 1, 5)
+        assert dates.parse_date("28. Dezember", reference) == dt.date(2026, 12, 28)
+
+    def test_the_recent_past_stays_this_year(self):
+        """Within a month back is a genuine recent date, not next year."""
+        assert dates.parse_date("5. August", dt.date(2026, 8, 20)) == dt.date(
+            2026, 8, 5
+        )
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("20:30 Uhr", dt.time(20, 30)),
+            ("ab 9.00", dt.time(9, 0)),
+            ("no time", None),
+            ("99:99", None),
+        ],
+    )
+    def test_parse_time(self, text, expected):
+        assert dates.parse_time(text) == expected
+
+    def test_a_bare_date_stays_a_date(self):
+        """That is what marks an Occurrence all-day rather than midnight."""
+        result = dates.combine(dt.date(2026, 8, 15), None)
+        assert isinstance(result, dt.date) and not isinstance(result, dt.datetime)
+
+    def test_a_known_time_makes_a_datetime(self):
+        assert isinstance(
+            dates.combine(dt.date(2026, 8, 15), dt.time(20, 0)), dt.datetime
+        )
 
 
 # --- what holds for every Source ----------------------------------------
@@ -422,6 +670,11 @@ PARSEABLE = [
     (goodnight, "grouped-events.json", "grouped-events", {}),
     (rausgegangen, "detail-event.html", "detail", {}),
     (thousandthings, "post-22888.json", "post", {"post_id": 22888}),
+    (austria_info, "query.json", "query", {"page": 0}),
+    (eventfinder, "search.html", "listing", {"page": 1}),
+    (event_spotter, "listing.html", "listing", {}),
+    (songkick, "listing.html", "listing", {}),
+    (warda, "detail.html", "detail", {}),
 ]
 
 
@@ -454,11 +707,16 @@ def test_every_parse_yields_usable_listings(source, fixture, kind, meta):
 # fails here instead of quietly shrinking the catalogue. The suites above would
 # not catch it: they import each module directly.
 PORTED = {
+    "austria_info",
+    "event_spotter",
+    "eventfinder",
     "events_at",
     "goabase",
     "goodnight",
     "rausgegangen",
+    "songkick",
     "thousandthings",
+    "warda",
     "wien_info",
 }
 

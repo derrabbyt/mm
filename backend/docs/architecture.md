@@ -46,7 +46,18 @@ rules apply to it exactly as they do to the module's top level.
 
 What the adapters share sits beside them rather than at the module's top level,
 because only they use it: `sources/http.py` is the client every fetch goes
-through. A helper lands here when the Source that needs it does, not before.
+through, `sources/dates.py` reads both the ISO timestamps the JSON Sources get
+subtly wrong and a German listing page's year-less dates, `sources/jsonld.py`
+walks the schema.org data three of them embed, and `sources/markup.py` finds the
+one picture that represents a happening. The last is named for what it reads
+because `html` is a stdlib module. A helper lands here when the Source that needs
+it does, not before.
+
+One consequence of scraping before geocoding: a Listing with no position cannot
+be found near a Rendezvous at all, because the read filters on distance. Most
+Sources publish no coordinates, so most of the catalogue is currently unservable
+— which is what the geocoding module is for, and why it is worth doing before
+more Sources rather than after.
 
 The layering inside a module is described in `auth-and-db-patterns.md`.
 
@@ -318,7 +329,7 @@ which is the point of having stubbed them:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — fifteen of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape and six of the twenty-one Sources are here: `content.listings` and four more with real models and real migrations, and the contract every Source follows in `events/sources/spec.py`. What is left is the other fifteen Sources, geocoding, and deduplicating Listings into Events |
+| **activity-loader** — ten of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape and eleven of the twenty-one Sources are here: `content.listings` and four more with real models and real migrations, and the contract every Source follows in `events/sources/spec.py`. What is left is the other ten Sources, geocoding, and deduplicating Listings into Events |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
 One thing in the codebase reads as permanent today and is not:
