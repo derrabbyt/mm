@@ -1,8 +1,10 @@
 """Reading the date formats Sources actually emit.
 
-Two jobs. `parse_iso_datetime` salvages the ISO timestamps that the JSON and
-JSON-LD Sources get subtly wrong. The rest reads a German listing page's idea of
-a date: these pages spell one several ways and frequently leave the year out
+Two jobs. The ISO group - `parse_iso_datetime`, `parse_iso_when`,
+`day_if_midnight` and `paired_end` - salvages the timestamps the JSON and
+JSON-LD Sources get subtly wrong, and decides when one of them means a day
+rather than a clock time. The rest reads a German listing page's idea of a
+date: these pages spell one several ways and frequently leave the year out
 (`15. August`, `Mi, 12. Aug`), which makes naive parsing produce a Listing in the
 wrong year, or none at all. Centralised so that each Source's parse stays about
 the page's *structure* rather than about calendars.
@@ -54,6 +56,65 @@ def parse_iso_datetime(value: Any) -> dt.datetime | None:
         except ValueError:
             continue
     return None
+
+
+def parse_iso_when(value: Any) -> dt.datetime | dt.date | None:
+    """An ISO value read as the *kind* of moment it actually describes.
+
+    A bare `YYYY-MM-DD` is a day, not a midnight. `parse_iso_datetime` would
+    hand back 00:00 for it, which scraped.py warns about specifically: a
+    fabricated midnight start sorts every time-unknown Listing above every real
+    evening one. Four Sources emit both shapes in the same field, so the
+    distinction is drawn here rather than four times over.
+    """
+    if not value:
+        return None
+    text = str(value).strip()
+    if len(text) == 10:
+        try:
+            return dt.date.fromisoformat(text)
+        except ValueError:
+            return None
+    parsed = parse_iso_datetime(text)
+    if parsed is not None:
+        return parsed
+    try:
+        return dt.date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def day_if_midnight(
+    moment: dt.datetime | dt.date | None,
+) -> dt.datetime | dt.date | None:
+    """Read an exact 00:00 as the day it names rather than as a start time.
+
+    Two Sources publish midnight to mean "on this day": the City of Vienna does
+    it across whole subEvent series, and eventjet does it for day-level entries.
+    Neither means a happening that begins at midnight, and a real one listed at
+    exactly 00:00.00 is rare enough that losing its clock time is the cheaper
+    mistake.
+    """
+    if isinstance(moment, dt.datetime) and moment.hour == 0 and moment.minute == 0:
+        return moment.date()
+    return moment
+
+
+def paired_end(
+    start: dt.datetime | dt.date | None, end: dt.datetime | dt.date | None
+) -> dt.datetime | dt.date | None:
+    """The end, but only when it is the same kind of value as the start.
+
+    A `date` start with a `datetime` end says two contradictory things about
+    whether the time is known, and normalisation has no way to reconcile them.
+    Dropping the end keeps the Occurrence honest: the day is certain, the
+    finish is not.
+    """
+    if end is None:
+        return None
+    if isinstance(start, dt.datetime) != isinstance(end, dt.datetime):
+        return None
+    return end
 
 
 _MONTHS: dict[str, int] = {}

@@ -173,7 +173,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         offer = jsonld.mapping(node.get("offers"))
         price, currency, is_free = _price(offer)
         ticket_url = offer.get("url")
-        image = jsonld.first(node.get("image"))
+        image = jsonld.image(node)
 
         yield RawListing(
             source_ref=source_ref,
@@ -194,5 +194,5 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             price_currency=currency,
             is_free=is_free,
             ticket_url=ticket_url,
-            image_url=image if isinstance(image, str) else None,
+            image_url=image,
         )

@@ -13,7 +13,6 @@ with backoff.
 
 import datetime as dt
 from collections.abc import Iterator
-from typing import Any
 
 from ....core.http import encode_query
 from ..scraped import RawListing, RawOccurrence
@@ -63,13 +62,6 @@ def _count_results(html: str) -> int:
     return len(jsonld.events_in(html))
 
 
-def _float(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
 def parse(payload: RawPayload) -> Iterator[RawListing]:
     seen: set[str] = set()
 
@@ -93,12 +85,12 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         seen.add(source_ref)
 
         where = jsonld.place(node)
-        geo = jsonld.mapping(jsonld.mapping(node.get("location")).get("geo"))
+        latitude, longitude = jsonld.coordinates(node)
 
         # Protocol-relative in the markup; normalize prefixes the scheme. Usually
         # the headline artist's photo rather than event artwork - for a gig
         # listing that is the picture the site itself shows.
-        image = jsonld.first(node.get("image"))
+        image = jsonld.image(node)
 
         artists = [
             one.get("name")
@@ -118,9 +110,9 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             postcode=where["postcode"],
             city=where["city"] or "Wien",
             country=where["country"] or "AT",
-            lat=_float(geo.get("latitude")),
-            lon=_float(geo.get("longitude")),
-            image_url=image if isinstance(image, str) else None,
+            lat=latitude,
+            lon=longitude,
+            image_url=image,
             # Everything here is live music by definition; the site has no
             # per-event category of its own.
             categories_raw=["Konzert"],

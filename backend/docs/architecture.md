@@ -366,7 +366,7 @@ which is the point of having stubbed them:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — ten of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape, the deduplication and eleven of the twenty-one Sources are here, with real models and real migrations: a run fills `content.listings` and then groups them into `content.events`, which is what the API serves. A run takes an advisory lock and refuses to retire an implausible share of any one Source, so it is safe to schedule. What is left is the other ten Sources, and the archive and database-role work that lets the standalone scraper be switched off |
+| **activity-loader** — the payload archive and the scraper's own database role | the `scrape-events` job in `modules/events` | the tables, the scrape, the deduplication and **all twenty-one Sources** are here, with real models and real migrations: a run fills `content.listings` and then groups them into `content.events`, which is what the API serves. A run takes an advisory lock and refuses to retire an implausible share of any one Source, so it is safe to schedule. What is left is the archive and database-role work that lets the standalone scraper be switched off |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
 One thing in the codebase reads as permanent today and is not:

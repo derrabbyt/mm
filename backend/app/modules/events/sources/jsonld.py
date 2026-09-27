@@ -1,7 +1,8 @@
 """Reading the schema.org data a page embeds about itself.
 
-Three Sources publish JSON-LD and each needs the same handful of things from it,
-which is why those live here rather than in each of them.
+Nine Sources publish JSON-LD and each needs the same handful of things from it -
+where it happens, what it costs, which picture is its own - which is why those
+live here rather than in each of them.
 
 `events_in` walks the whole document rather than reading a known path, because
 the shape differs per site: one nests its Event inside an `@graph`, another
@@ -69,6 +70,55 @@ def place(node: Any) -> dict[str, str | None]:
         "city": address.get("addressLocality"),
         "country": address.get("addressCountry"),
     }
+
+
+def _number(value: Any) -> float | None:
+    """schema.org writes numbers as strings about as often as numbers."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def coordinates(node: Any) -> tuple[float | None, float | None]:
+    """The Place's coordinates, when it published a usable pair.
+
+    Half the coordinates in these feeds arrive quoted (`"48.2006"`), so reading
+    them with `float` rather than trusting the JSON type is not defensive
+    clutter - it is the difference between a Listing that needs geocoding and
+    one that does not.
+    """
+    location = mapping(node.get("location") if isinstance(node, dict) else None)
+    geo = mapping(location.get("geo"))
+    return _number(geo.get("latitude")), _number(geo.get("longitude"))
+
+
+def price(node: Any) -> tuple[float | None, str | None]:
+    """What the first Offer asks, and in which currency.
+
+    `lowPrice` is the same claim as `price` for a ticket sold at one tier, and
+    a site uses whichever it feels like, sometimes on neighbouring events.
+
+    What a zero *means* is left to the caller, because Sources disagree: this
+    one reads it as a published price of nothing, while rausgegangen reads its
+    own `0.00` as "no price given" and so does not come through here at all.
+    """
+    offer = mapping(node.get("offers") if isinstance(node, dict) else None)
+    if not offer:
+        return None, None
+    return _number(offer.get("price") or offer.get("lowPrice")), offer.get(
+        "priceCurrency"
+    )
+
+
+def image(node: Any) -> str | None:
+    """The single image URL, when the property held one at all.
+
+    JSON-LD lets `image` be a string, a list, or an `ImageObject`; the last is
+    not a URL and a Source that wants a picture has to look elsewhere for one.
+    """
+    found = first(node.get("image") if isinstance(node, dict) else None)
+    return found if isinstance(found, str) else None
 
 
 def _walk(node: Any) -> Iterator[dict[str, Any]]:
