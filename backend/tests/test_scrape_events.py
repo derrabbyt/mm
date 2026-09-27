@@ -1,8 +1,8 @@
 """A Source, through the scrape job, to the HTTP response.
 
 One test covering the whole write path at once - the job, the normalisation, the
-schema and the read - by registering a Source that yields a known Listing and
-then asking the endpoint that serves what is on near a Rendezvous.
+deduplication, the schema and the read - by registering Sources that yield known
+Listings and then asking the endpoint that serves what is on near a Rendezvous.
 
 **Only the response is asserted.** Nothing here reaches into a repository or
 counts rows: the point is what a caller can observe, and the layers in between
@@ -11,7 +11,7 @@ are expected to be rearranged by the work that follows.
 
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -58,6 +58,24 @@ class StubSource:
             lon=LONGITUDE,
             categories_raw=["Konzert"],
         )
+
+
+class ListingSource:
+    """A Source that yields exactly the Listings it is given.
+
+    `StubSource` above is one happening described one way; this is what a
+    second Source describing the same happening differently looks like.
+    """
+
+    def __init__(self, name: str, *listings: RawListing) -> None:
+        self.SPEC = SourceSpec(name=name, locales=("de",), delay_seconds=0.0)
+        self._listings = listings
+
+    def fetch(self, ctx: FetchContext) -> Iterator[RawPayload]:
+        yield RawPayload(url=f"stub://{self.SPEC.name}", body=b"{}")
+
+    def parse(self, payload: RawPayload) -> Iterator[RawListing]:
+        yield from self._listings
 
 
 class LentSession:
@@ -123,9 +141,11 @@ def run_scrape(db, monkeypatch):
     geocoder being reachable, and none may ask a real one for an address.
     """
 
-    def _run(source, locate=None) -> None:
+    def _run(*sources, locate=None) -> None:
         monkeypatch.setattr(
-            source_registry, "discover", lambda: {source.SPEC.name: source}
+            source_registry,
+            "discover",
+            lambda: {source.SPEC.name: source for source in sources},
         )
         monkeypatch.setattr(job, "SessionLocal", lambda: LentSession(db))
         monkeypatch.setattr(
@@ -138,8 +158,10 @@ def run_scrape(db, monkeypatch):
     return _run
 
 
-async def _events(client, meetup) -> list[dict]:
-    response = await client.get(f"/api/meetups/{meetup.id}/rendezvous/events")
+async def _events(client, meetup, **params) -> list[dict]:
+    response = await client.get(
+        f"/api/meetups/{meetup.id}/rendezvous/events", params=params
+    )
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -305,3 +327,248 @@ async def test_a_record_that_cannot_be_normalised_costs_only_itself(
 
     assert titles.count("Stub concert") == 1
     assert "Untitled event" not in titles
+
+
+def listing(source_ref: str, title: str, starts_at: datetime, **kw) -> RawListing:
+    """A Listing at the reference point unless a test says otherwise."""
+    kw.setdefault("lat", LATITUDE)
+    kw.setdefault("lon", LONGITUDE)
+    return RawListing(
+        source_ref=source_ref,
+        occurrences=[RawOccurrence(start=starts_at)],
+        title=title,
+        **kw,
+    )
+
+
+async def test_one_happening_several_sources_listed_is_returned_once(
+    client, meetup, meeting_at, run_scrape
+):
+    """The point of the whole absorption: 13.9% of what this endpoint returned
+    was the same happening again, and one was returned as many as ten times.
+
+    The entry is also the most complete one rather than whichever arrived
+    first. The Listing that wins on overall completeness is the one with a
+    position, and that is routinely not the one that names the Venue or
+    carries a picture - the real "Afrika Tage" Event rendered as "@ ?" for
+    exactly this reason.
+    """
+    starts_at = meeting_at + timedelta(minutes=30)
+    run_scrape(
+        ListingSource(
+            "songkick",
+            listing("sk-1", "Carpenter Brut", starts_at, street="Baumgasse 80"),
+        ),
+        ListingSource(
+            "eventfinder",
+            listing(
+                "ef-1",
+                "carpenter brut",
+                starts_at,
+                venue_name="Arena Wien",
+                description="Synthwave, loud",
+                image_url="https://example.invalid/brut.jpg",
+                lat=None,
+                lon=None,
+            ),
+        ),
+        # Placed, like the first: without the grouping these two alone are
+        # two entries for one gig.
+        ListingSource(
+            "wien_info",
+            listing(
+                "wi-1",
+                "Carpenter Brut @ Arena Wien",
+                starts_at,
+                venue_name="Arena Wien",
+            ),
+        ),
+    )
+
+    found = [one for one in await _events(client, meetup) if "arpenter" in one["title"]]
+
+    assert len(found) == 1
+    (event,) = found
+    assert event["venue_name"] == "Arena Wien"
+    assert event["description"] == "Synthwave, loud"
+    assert event["image_url"] == "https://example.invalid/brut.jpg"
+
+
+async def test_two_happenings_at_one_venue_on_one_evening_stay_separate(
+    client, meetup, meeting_at, run_scrape
+):
+    """Two productions in one house on one night are two things, whatever the
+    Venue name says."""
+    run_scrape(
+        ListingSource(
+            "events_at",
+            listing(
+                "ea-1",
+                "Don Carlo",
+                meeting_at + timedelta(minutes=30),
+                venue_name="Wiener Staatsoper",
+            ),
+            listing(
+                "ea-2",
+                "La Bohème",
+                meeting_at + timedelta(minutes=45),
+                venue_name="Wiener Staatsoper",
+            ),
+        )
+    )
+
+    titles = {one["title"] for one in await _events(client, meetup)}
+
+    assert {"Don Carlo", "La Bohème"} <= titles
+
+
+async def test_venues_far_apart_stay_separate_even_with_similar_names(
+    client, meetup, meeting_at, run_scrape
+):
+    """`wien` is a stop word, so "Orpheum Wien" is a token subset of "Orpheum
+    Graz" and the names agree. Only the distance between them says otherwise.
+
+    The second position is in Vienna rather than in Graz on purpose: that is
+    where the geocoder put "Orpheum Graz", 6.8 km from the other Orpheum, and
+    a pin in Styria would make the case easier than the real one. See ADR
+    0002 - a show in another city must never be presented as around the
+    corner.
+    """
+    starts_at = meeting_at + timedelta(minutes=30)
+    run_scrape(
+        ListingSource(
+            "events_at",
+            listing("ea-1", "DanzerMania", starts_at, venue_name="Orpheum Wien"),
+        ),
+        ListingSource(
+            "eventfinder",
+            listing(
+                "ef-1",
+                "DanzerMania",
+                starts_at,
+                venue_name="Orpheum Graz",
+                lat=48.2434,
+                lon=16.4481,
+            ),
+        ),
+    )
+
+    found = [
+        one
+        for one in await _events(client, meetup, radius_meters=10_000)
+        if one["title"] == "DanzerMania"
+    ]
+
+    assert len(found) == 2
+    assert {one["venue_name"] for one in found} == {"Orpheum Wien", "Orpheum Graz"}
+
+
+async def test_a_listing_with_no_venue_name_is_still_served(
+    client, meetup, meeting_at, run_scrape
+):
+    """3.6% of Listings name no Venue at all. A known position is enough to be
+    worth showing, and it is why the distance veto needs both sides placed."""
+    run_scrape(
+        ListingSource(
+            "wien_gv_at",
+            listing("gv-1", "Nameless open air", meeting_at + timedelta(minutes=30)),
+        )
+    )
+
+    (event,) = [
+        one
+        for one in await _events(client, meetup)
+        if one["title"] == "Nameless open air"
+    ]
+    assert event["venue_name"] is None
+
+
+async def test_the_day_is_the_meetups_local_day_not_the_utc_one(
+    db, client, meetup, meeting_at, run_scrape
+):
+    """A gathering at 00:30 in Vienna is still the previous day in UTC, and the
+    programme it should show is the local day's."""
+    after_midnight = datetime.combine(
+        meeting_at.date(), datetime.min.time(), tzinfo=VIENNA
+    ).replace(hour=0, minute=30)
+    assert after_midnight.astimezone(UTC).date() != after_midnight.date()
+    meetup.starts_at = after_midnight
+    db.commit()
+
+    run_scrape(
+        ListingSource(
+            "goodnight",
+            listing("gn-1", "Late set", after_midnight + timedelta(minutes=30)),
+        )
+    )
+
+    assert "Late set" in {one["title"] for one in await _events(client, meetup)}
+
+
+async def test_a_day_whose_last_listing_disappeared_is_served_no_longer(
+    client, meetup, meeting_at, run_scrape
+):
+    """A day the run finds nothing on still has to be rebuilt.
+
+    Retiring a Listing does not delete its Occurrences, so an Event nobody
+    rebuilds goes on being served off the back of them. The day has to be
+    emptied deliberately, which means a rebuild cannot only visit the days
+    that still have something on them.
+    """
+    run_scrape(StubSource(meeting_at + timedelta(minutes=30)))
+    assert "Stub concert" in {one["title"] for one in await _events(client, meetup)}
+
+    # The same Source, now listing one thing days later and nothing at all on
+    # the meetup's day.
+    run_scrape(
+        ListingSource(
+            "stub", listing("stub-9", "Next week", meeting_at + timedelta(days=5))
+        )
+    )
+
+    assert "Stub concert" not in {one["title"] for one in await _events(client, meetup)}
+
+
+async def test_the_richest_listing_is_the_one_the_event_reads_as(
+    client, meetup, meeting_at, run_scrape
+):
+    """Where two Sources both filled a field and disagree, the fuller Listing
+    wins - the entry is the most complete one rather than whichever arrived
+    first. Completeness decides it, so the Source named second alphabetically
+    is not thereby the poorer answer.
+    """
+    starts_at = meeting_at + timedelta(minutes=30)
+    run_scrape(
+        ListingSource(
+            "aaa_full",
+            listing(
+                "full-1",
+                "Deep Purple",
+                starts_at,
+                venue_name="Wiener Stadthalle",
+                street="Roland-Rainer-Platz 1",
+                description="Doors at 19:00, support act announced",
+                image_url="https://example.invalid/full.jpg",
+                ticket_url="https://example.invalid/tickets",
+                price_min=49.0,
+                origin_url="https://stadthalle.test/deep-purple",
+            ),
+        ),
+        ListingSource(
+            "zzz_thin",
+            listing(
+                "thin-1",
+                "DEEP PURPLE",
+                starts_at,
+                venue_name="Stadthalle Wien",
+                description="Konzert",
+                origin_url="https://aggregator.test/12345",
+            ),
+        ),
+    )
+
+    (event,) = [
+        one for one in await _events(client, meetup) if one["title"] == "Deep Purple"
+    ]
+    assert event["description"] == "Doors at 19:00, support act announced"
+    assert event["origin_url"] == "https://stadthalle.test/deep-purple"

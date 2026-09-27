@@ -3,6 +3,9 @@
 An Occurrence is a range, not a day. A museum open all year is one row dated at
 its start with duration_days=364, so a query matching date_local alone hid it
 for the other 364 days - 26% of what is on in a typical day.
+
+The range survives the grouping: each case here stores a Listing, has the run
+build its Event, and then asks what the endpoint's service would serve.
 """
 
 from datetime import UTC, date, datetime
@@ -48,6 +51,9 @@ def listing(db):
             )
         )
         db.commit()
+        # What a run does after storing: group the day's Listings into Events.
+        # The read serves those, so nothing is visible until this has happened.
+        service.rebuild_day(db, day, run_id="test-run")
         return row.id
 
     return _make
@@ -130,3 +136,40 @@ def test_a_run_starting_after_the_day_is_not_found(db, listing):
         False,
     )
     assert "Opens in October" not in _titles(db)
+
+
+def test_the_next_showing_after_the_meetup_is_the_one_shown(db, listing):
+    """A Listing can hold several showings on one day - eventfinder lists eight
+    "Krimi Escape" sessions - and they are one Event, not eight. Which of them
+    is reported is still a question about the Occurrences, which is why the
+    read reaches them through the Event's membership rather than copying a
+    start time onto it."""
+    listing_id = listing(
+        "Krimi Escape", datetime(2026, 9, 15, 17, tzinfo=UTC), DAY, 0, False
+    )
+    later = datetime(2026, 9, 15, 20, tzinfo=UTC)
+    db.add(
+        Occurrence(
+            listing_id=listing_id,
+            start_utc=later,
+            start_local=later.replace(tzinfo=None),
+            date_local=DAY,
+            all_day=False,
+        )
+    )
+    db.commit()
+    service.rebuild_day(db, DAY, run_id="test-run")
+
+    (found,) = [
+        e
+        for e in service.get_events_near(
+            db,
+            position=VIENNA,
+            day=DAY,
+            not_before=EVENING,
+            radius_meters=500,
+            limit=50,
+        )
+        if e.title == "Krimi Escape"
+    ]
+    assert found.starts_at.hour == 20

@@ -54,7 +54,8 @@ import difflib
 import math
 import re
 import unicodedata
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 
 from ...core.contracts import Position
 
@@ -400,8 +401,10 @@ def _umbrella_reason(a: Candidate, b: Candidate, venue_rule: str) -> str | None:
 class Group:
     """The Listings one Event will be built from: one day, one happening.
 
-    Not an Event itself - building and storing those is the read path's job,
-    and nothing here knows what an Event looks like.
+    Not an Event itself. What an Event is made of is decided here - which
+    Listings belong together, which of them represents them, and what it shows
+    (see `gap_fill`) - but what an Event *is*, as a row someone can read, is
+    the module's to know and not this file's.
     """
 
     date_local: dt.date
@@ -524,3 +527,93 @@ def completeness_score(
     if end_known:
         score += 1
     return score
+
+
+@dataclass(frozen=True)
+class Content:
+    """One Listing's share of an Event: what a person is shown, per Source.
+
+    Separate from `Candidate` because the two answer different questions. A
+    Candidate is what the matcher compares; a Content is what survives into the
+    Event once the matching is over, which is why the fields barely overlap.
+    """
+
+    listing_id: int
+    source: str
+    # Which of the two title/description sides this Source actually filled.
+    lang_primary: str = "de"
+    title_de: str | None = None
+    title_en: str | None = None
+    description_de: str | None = None
+    description_en: str | None = None
+    venue_name: str | None = None
+    street: str | None = None
+    postcode: str | None = None
+    city: str | None = None
+    position: Position | None = None
+    # The Source's own page, and the organiser's where the Source named one.
+    url: str | None = None
+    origin_url: str | None = None
+    image_url: str | None = None
+    completeness: int = 0
+
+
+# Filled from another Listing when the primary has nothing. Only fields that
+# describe the happening: the identity ones - the Listing id, its Source and its
+# links - stay the primary's, so an Event always points at one real Listing
+# rather than at the best of everyone's. `position` is absent because it is
+# filled whole rather than field by field.
+_GAP_FILLED = (
+    "title_de",
+    "title_en",
+    "description_de",
+    "description_en",
+    "venue_name",
+    "street",
+    "postcode",
+    "city",
+    "image_url",
+)
+
+
+def gap_fill(primary: Content, others: Sequence[Content]) -> Content:
+    """The Event's content: the primary Listing, gap-filled from the rest.
+
+    Needed because the primary is chosen on overall completeness, which is
+    dominated by the position - and the Listing that has a position is not
+    always the one that has a Venue name. The "Afrika Tage" Event rendered as
+    "@ ?" because wien.gv.at won on coordinates while carrying no Venue name,
+    though four other Sources named the Donauinsel.
+
+    Only gaps are filled, never overwritten: where two Sources disagree the
+    primary wins, so an Event stays internally consistent rather than becoming
+    a best-of composite nobody published.
+    """
+    ranked = sorted(others, key=lambda one: -one.completeness)
+    filled: dict[str, object] = {}
+
+    for name in _GAP_FILLED:
+        if _present(getattr(primary, name)):
+            continue
+        for other in ranked:
+            value = getattr(other, name)
+            if _present(value):
+                filled[name] = value
+                break
+
+    # A position is one value, not two columns: taking a latitude from one
+    # Source and a longitude from another would invent a place no Source
+    # reported.
+    if primary.position is None:
+        for other in ranked:
+            if other.position is not None:
+                filled["position"] = other.position
+                break
+
+    return replace(primary, **filled)
+
+
+def _present(value: object) -> bool:
+    """Normalisation writes the unused side of a de/en pair as "" rather than
+    NULL, so an empty string is a gap like any other."""
+    return value is not None and value != ""

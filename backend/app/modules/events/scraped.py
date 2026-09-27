@@ -217,6 +217,46 @@ class NormalizedListing(BaseModel):
     occurrences: list[NormalizedOccurrence] = Field(default_factory=list)
 
 
+class BuiltEvent(BaseModel):
+    """One deduplicated Event, ready to store. One row of `content.events`.
+
+    Not scraped and not normalised: derived from Listings that already are, by
+    grouping a day's worth of them and rendering the richest of the group. It
+    carries the Listings it was built from rather than a start time - when an
+    Event is on stays the Occurrences' answer.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Names the group by the Listing representing it, so an Event keeps its id
+    # across runs for as long as the same Listing is the richest of the group.
+    group_key: str
+    date_local: date
+    duration_days: int = 0
+
+    primary_listing_id: int
+    listing_ids: list[int] = Field(default_factory=list)
+
+    source: str
+    lang_primary: Literal["de", "en"] = "de"
+    title_de: str | None = None
+    title_en: str | None = None
+    description_de: str | None = None
+    description_en: str | None = None
+
+    venue_name_raw: str | None = None
+    street: str | None = None
+    postcode: str | None = None
+    city: str | None = None
+
+    lat: float | None = None
+    lon: float | None = None
+
+    url: str | None = None
+    origin_url: str | None = None
+    image_url: str | None = None
+
+
 class SourceRunStats(BaseModel):
     """What one Source did in one run. Written whether it succeeded or not.
 

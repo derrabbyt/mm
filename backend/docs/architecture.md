@@ -173,8 +173,9 @@ nothing but the database:
 geodata ──┬──► matrix ──► rendezvous          OSM extract + GTFS feed,
           └──► poi                            put in shared storage
 
-scrape-events ──► content.listings ──► events   event listings, scraped
-                                                from twenty-one sites
+scrape-events ──► content.listings ──► content.events
+                  one row per Source     one per happening,
+                  from twenty-one sites  whoever listed it
 ```
 
 `matrix` and `poi` both read what `geodata` has put in shared storage rather
@@ -213,8 +214,9 @@ speak it.
 The third is a module's own vocabulary, and it earns a file only when several
 layers inside the module have to speak it. `events/scraped.py` is the one:
 `RawListing` is what a Source's parse yields, `NormalizedListing` is what the
-repository writes, and `sources/`, `normalize.py`, `service.py` and
-`repository.py` all need to name them. It sits next to the pure-logic files
+repository writes, `BuiltEvent` is what a day's grouping produces, and
+`sources/`, `normalize.py`, `service.py` and `repository.py` all need to name
+them. It sits next to the pure-logic files
 rather than in `schemas.py` (nothing here is on the wire) or `core/contracts.py`
 (no other module may see it). If a second module ever needs one of these, that
 is the signal to promote it to `core/contracts.py`, not to import across.
@@ -356,7 +358,7 @@ which is the point of having stubbed them:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — ten of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape and eleven of the twenty-one Sources are here: `content.listings` and four more with real models and real migrations, and the contract every Source follows in `events/sources/spec.py`. What is left is the other ten Sources and building the Events themselves: geocoding is its own module, and the rules that decide whether two Listings are the same happening are `events/dedup.py` |
+| **activity-loader** — ten of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape, the deduplication and eleven of the twenty-one Sources are here, with real models and real migrations: a run fills `content.listings` and then groups them into `content.events`, which is what the API serves. What is left is the other ten Sources, and the run-safety, archive and database-role work that lets the standalone scraper be switched off |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
 One thing in the codebase reads as permanent today and is not:

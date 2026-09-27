@@ -4,6 +4,11 @@
 `EventsLoadError` and the write path `ListingWriteError`, so a service reads as
 what it does rather than as error plumbing.
 
+Two surfaces, and only one of them is served. Listings and their Occurrences
+are what a scrape writes; **Events** are what a person is shown, rebuilt from
+them after every run. The read touches Listings only through an Event's
+membership, to reach the Occurrences that say when it is on.
+
 Writes are upserts keyed on `(source, source_ref)`. Every touch stamps
 `last_seen_run`, and that stamp is what says whether a row is still real:
 
@@ -37,22 +42,44 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from ...core.exceptions import EventsLoadError, ListingWriteError
-from .models import Listing, Occurrence, QuarantinedListing, SourceRun
-from .scraped import NormalizedListing, Rejected, SourceRunStats
+from ...core.exceptions import EventsLoadError, EventWriteError, ListingWriteError
+from .models import (
+    Event,
+    EventListing,
+    Listing,
+    Occurrence,
+    QuarantinedListing,
+    SourceRun,
+)
+from .scraped import BuiltEvent, NormalizedListing, Rejected, SourceRunStats
 
 
 def _distance_meters(latitude: float, longitude: float) -> ColumnElement[float]:
-    """Great-circle metres from every Listing to this point. Listings store plain
+    """Great-circle metres from every Event to this point. Events store plain
     lat/lon columns rather than a geometry, so there is no spatial index to hit;
     at a few thousand live rows the sequential scan has not been worth one."""
     return func.ST_DistanceSphere(
-        func.ST_MakePoint(Listing.lon, Listing.lat),
+        func.ST_MakePoint(Event.lon, Event.lat),
         func.ST_MakePoint(longitude, latitude),
     ).cast(Float)
 
 
-def find_near(
+def _covers_day(
+    date_local: ColumnElement[date],
+    duration_days: ColumnElement[int],
+    day: date,
+) -> ColumnElement[bool]:
+    """Does the range starting at `date_local` still include `day`?
+
+    Both Occurrences and the Events built from them carry a start and a length
+    rather than a row per day: a museum open all year is one of each, dated
+    1 January with duration_days=364, so matching the start alone hides it for
+    the other 364 days.
+    """
+    return and_(date_local <= day, date_local + duration_days >= day)
+
+
+def find_events_near(
     db: Session,
     *,
     latitude: float,
@@ -61,27 +88,24 @@ def find_near(
     not_before: datetime,
     radius_meters: int,
     limit: int,
-) -> Sequence[Row[tuple[Listing, datetime, bool, float]]]:
-    """Listings showing on `day` within `radius_meters` of the point, nearest first.
+) -> Sequence[Row[tuple[Event, datetime, bool, float]]]:
+    """Events showing on `day` within `radius_meters` of the point, nearest first.
 
-    Each row is the Listing, the start of the one Occurrence that matters,
+    Each row is the Event, the start of the one Occurrence that matters,
     whether that Occurrence is all-day, and its distance in metres.
     """
     distance = _distance_meters(latitude, longitude)
 
-    # An Occurrence is a *range*, not a day: a museum open all year is one row
-    # dated 1 January with duration_days=364, so matching date_local alone hides
-    # it for the other 364 days.
-    covers_day = and_(
-        Occurrence.date_local <= day,
-        Occurrence.date_local + Occurrence.duration_days >= day,
-    )
     # True when the run began before today, so it is simply open rather than
     # starting at a particular time.
     ongoing = Occurrence.date_local < day
 
-    # An event runs on many dates; LATERAL picks the one showing that matters
-    # here - the next one that day - and drops events with nothing on at all.
+    # When an Event is on is still its Listings' Occurrences to say, reached
+    # through the group's membership - denormalising a start time onto the
+    # Event would be a second answer to the same question. LATERAL picks the
+    # one showing that matters here: the next one that day, over every Listing
+    # the Event was built from, which is also what drops an Event with nothing
+    # on at all.
     next_occurrence = (
         select(
             # A run that began earlier has no meaningful start time today, so
@@ -91,9 +115,11 @@ def find_near(
             ),
             or_(Occurrence.all_day, ongoing).label("all_day"),
         )
+        .select_from(EventListing)
+        .join(Occurrence, Occurrence.listing_id == EventListing.listing_id)
         .where(
-            Occurrence.listing_id == Listing.id,
-            covers_day,
+            EventListing.event_id == Event.id,
+            _covers_day(Occurrence.date_local, Occurrence.duration_days, day),
             # An exhibition open all day is still worth showing at 20:00; a
             # concert that started at 18:00 is not. All-day rows carry a
             # midnight start that would otherwise fail this test every time,
@@ -107,16 +133,16 @@ def find_near(
 
     query = (
         select(
-            Listing,
+            Event,
             next_occurrence.c.start_local,
             next_occurrence.c.all_day,
             distance.label("distance_meters"),
         )
         .join(next_occurrence, true())
         .where(
-            Listing.disappeared_at.is_(None),
-            Listing.lat.is_not(None),
-            Listing.lon.is_not(None),
+            _covers_day(Event.date_local, Event.duration_days, day),
+            Event.lat.is_not(None),
+            Event.lon.is_not(None),
             distance <= radius_meters,
         )
         .order_by(distance, next_occurrence.c.start_local)
@@ -127,6 +153,159 @@ def find_near(
         return db.execute(query).all()
     except SQLAlchemyError as exc:
         raise EventsLoadError() from exc
+
+
+def days_to_rebuild(db: Session, *, since: date, until: date) -> Sequence[date]:
+    """Every local day that has a live Occurrence starting on it.
+
+    A day is named by where its Occurrences *start*, which is how a year-long
+    exhibition is still rebuilt in September: its day is 1 January, so the
+    window is tested against the whole range an Occurrence covers rather than
+    against its start alone.
+    """
+    query = (
+        select(Occurrence.date_local)
+        .join(Listing, Listing.id == Occurrence.listing_id)
+        .where(
+            Listing.disappeared_at.is_(None),
+            Occurrence.date_local <= until,
+            Occurrence.date_local + Occurrence.duration_days >= since,
+        )
+        .group_by(Occurrence.date_local)
+        .order_by(Occurrence.date_local)
+    )
+    try:
+        return db.execute(query).scalars().all()
+    except SQLAlchemyError as exc:
+        raise EventsLoadError() from exc
+
+
+def day_candidates(
+    db: Session, day: date
+) -> Sequence[Row[tuple[Listing, bool, int, bool]]]:
+    """Every live Listing with an Occurrence starting on `day`.
+
+    One row per Listing, not per Occurrence: a Listing can hold several
+    Occurrences on one day (eventfinder lists eight "Krimi Escape" sessions),
+    and those are genuine showtimes rather than duplicates of each other. So
+    `all_day` is aggregated with `bool_and` - a single timed showing makes the
+    day timed - and the range is the longest of them.
+    """
+    query = (
+        select(
+            Listing,
+            func.bool_and(Occurrence.all_day).label("all_day"),
+            func.max(Occurrence.duration_days).label("duration_days"),
+            func.bool_or(Occurrence.end_local.is_not(None)).label("end_known"),
+        )
+        .join(Occurrence, Occurrence.listing_id == Listing.id)
+        .where(Listing.disappeared_at.is_(None), Occurrence.date_local == day)
+        .group_by(Listing.id)
+    )
+    try:
+        return db.execute(query).all()
+    except SQLAlchemyError as exc:
+        raise EventsLoadError() from exc
+
+
+# Every field of a BuiltEvent that is a column of its own, which is all of
+# them but the two identifying the row and the membership written beside it.
+# Derived rather than listed again: unlike a Listing, an Event has nothing a
+# run must leave alone, so a field added to one belongs in the other.
+_EVENT_KEYS = frozenset({"group_key", "date_local", "listing_ids"})
+_EVENT_COLUMNS = tuple(
+    name for name in BuiltEvent.model_fields if name not in _EVENT_KEYS
+)
+
+
+def write_events(
+    db: Session, day: date, events: Sequence[BuiltEvent], run_id: str
+) -> int:
+    """Store one day's Events. Returns how many were written.
+
+    Upserted on `(date_local, group_key)` rather than replaced outright, so an
+    Event keeps the id the API has already served for as long as the same
+    Listing represents it. Clearing out what this run did not write is
+    `drop_events_not_built_by`, once, at the end of the pass.
+    """
+    try:
+        written: list[int] = []
+        members: list[dict[str, object]] = []
+        for built in events:
+            values = built.model_dump(mode="json", include=set(_EVENT_COLUMNS))
+            values |= {
+                "group_key": built.group_key,
+                "date_local": built.date_local,
+                "built_run": run_id,
+            }
+            statement = insert(Event).values(**values)
+            event_id = db.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[Event.date_local, Event.group_key],
+                    set_={
+                        **{
+                            column: statement.excluded[column]
+                            for column in _EVENT_COLUMNS
+                        },
+                        "built_run": statement.excluded.built_run,
+                        "updated_at": func.now(),
+                    },
+                ).returning(Event.id)
+            ).scalar_one()
+            written.append(event_id)
+            members.extend(
+                {
+                    "event_id": event_id,
+                    "listing_id": listing_id,
+                    "is_primary": listing_id == built.primary_listing_id,
+                }
+                for listing_id in built.listing_ids
+            )
+
+        # Membership is replaced wholesale: which Listings an Event was built
+        # from is decided from scratch every run, and a Listing that left the
+        # group has to stop being one of its answers to "when is this on?".
+        # In two statements for the whole day rather than two per Event, which
+        # is the difference between three round trips per Event and one.
+        if written:
+            db.execute(delete(EventListing).where(EventListing.event_id.in_(written)))
+            db.execute(insert(EventListing), members)
+
+        # The last write of this day's transaction, so it is where it commits:
+        # a day's Events and their membership land together or not at all.
+        db.commit()
+    except SQLAlchemyError as exc:
+        raise EventWriteError(day.isoformat()) from exc
+
+    return len(events)
+
+
+def drop_events_not_built_by(
+    db: Session, run_id: str, *, since: date, until: date
+) -> int:
+    """Delete the Events in the window that `run_id` did not write.
+
+    A whole-window sweep rather than a delete per rebuilt day, because the
+    days that need clearing are exactly the ones a per-day pass never visits:
+    retiring a Listing leaves its Occurrences in place, so a day whose last
+    Listing disappeared has no candidates to rebuild from and would go on
+    being served off the back of them.
+
+    The window is tested against the range an Event covers, not its start, so
+    a year-long exhibition is swept with everything else.
+    """
+    try:
+        result = db.execute(
+            delete(Event).where(
+                Event.built_run != run_id,
+                Event.date_local <= until,
+                Event.date_local + Event.duration_days >= since,
+            )
+        )
+        db.commit()
+    except SQLAlchemyError as exc:
+        raise EventWriteError(f"{since}..{until}") from exc
+    return result.rowcount
 
 
 # Written on every touch. Geo is deliberately absent: a run with no coordinates

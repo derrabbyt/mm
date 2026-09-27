@@ -19,8 +19,10 @@ import pytest
 from app.core.contracts import Position
 from app.modules.events.dedup import (
     Candidate,
+    Content,
     compare,
     completeness_score,
+    gap_fill,
     group_day,
     km_apart,
     tokens,
@@ -28,6 +30,7 @@ from app.modules.events.dedup import (
 from app.modules.events.normalize import norm_key
 
 DAY = dt.date(2026, 8, 11)
+VIENNA = Position(latitude=48.2082, longitude=16.3738)
 
 
 def at(lat: float | None, lon: float | None) -> Position | None:
@@ -701,3 +704,97 @@ class TestCompletenessScore:
 
     def test_an_empty_listing_scores_nothing(self):
         assert completeness_score() == 0
+
+
+def content(listing_id: int = 1, **kw) -> Content:
+    """One Listing's share of an Event, with everything empty by default."""
+    return Content(listing_id=listing_id, source=kw.pop("source", "a"), **kw)
+
+
+class TestGapFill:
+    """What an Event takes from the Listings it was built from.
+
+    Needed because the primary is chosen on overall completeness, which is
+    dominated by the position - and the Listing that has a position is not
+    always the one that has a Venue name.
+    """
+
+    def test_gaps_are_filled_from_the_other_listings(self):
+        """The real "Afrika Tage" Event: position from one Source, Venue from
+        another. wien.gv.at won primary on its coordinates while naming no
+        Venue, though four other Sources named the Donauinsel - the entry
+        rendered as "@ ?" before this."""
+        merged = gap_fill(
+            content(1, source="wien_gv_at", title_de="Afrika Tage", position=VIENNA),
+            [
+                content(
+                    2,
+                    source="eventfinder",
+                    venue_name="Donauinsel",
+                    street="Floridsdorfer Brücke",
+                    completeness=3,
+                )
+            ],
+        )
+        assert merged.venue_name == "Donauinsel"
+        assert merged.street == "Floridsdorfer Brücke"
+        assert merged.title_de == "Afrika Tage"
+
+    def test_the_primary_is_never_overwritten(self):
+        """Where two Sources disagree the primary wins, so an Event stays
+        internally consistent rather than becoming a best-of composite nobody
+        published."""
+        merged = gap_fill(
+            content(1, venue_name="Wiener Stadthalle"),
+            [content(2, venue_name="Stadthalle Wien", completeness=99)],
+        )
+        assert merged.venue_name == "Wiener Stadthalle"
+
+    def test_the_richest_listing_wins_a_gap(self):
+        merged = gap_fill(
+            content(1),
+            [
+                content(2, source="poor", image_url="poor.jpg", completeness=1),
+                content(3, source="rich", image_url="rich.jpg", completeness=9),
+            ],
+        )
+        assert merged.image_url == "rich.jpg"
+
+    def test_an_empty_string_counts_as_a_gap(self):
+        """Normalisation writes the unused side of a de/en pair as "", not NULL."""
+        merged = gap_fill(
+            content(1, title_en=""),
+            [content(2, title_en="Africa Days", completeness=1)],
+        )
+        assert merged.title_en == "Africa Days"
+
+    def test_the_position_travels_whole(self):
+        """Taking a latitude from one Source and a longitude from another would
+        invent a place no Source reported - which is why a position is one
+        value here rather than two columns."""
+        merged = gap_fill(content(1), [content(2, position=VIENNA, completeness=1)])
+        assert merged.position == VIENNA
+
+    def test_identity_stays_with_the_primary(self):
+        """An Event points at one real Listing, so its links are that Listing's
+        and not the best of everyone's."""
+        merged = gap_fill(
+            content(1, source="wien_info", url="https://wien.info/x"),
+            [
+                content(
+                    2,
+                    source="songkick",
+                    url="https://songkick.test/y",
+                    origin_url="https://venue.test/y",
+                    completeness=9,
+                )
+            ],
+        )
+        assert merged.listing_id == 1
+        assert merged.source == "wien_info"
+        assert merged.url == "https://wien.info/x"
+        assert merged.origin_url is None
+
+    def test_one_listing_alone_is_returned_unchanged(self):
+        only = content(1, title_de="Solo", position=VIENNA)
+        assert gap_fill(only, []) == only

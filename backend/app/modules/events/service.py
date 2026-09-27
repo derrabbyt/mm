@@ -1,8 +1,14 @@
 """Scraping the catalogue, and reading what is on near a point on a day.
 
-The read answers with one record per Source, so a happening two Sources listed
-comes back twice - a Listing is not yet an Event. Deduplicating them is a later
-step.
+Three steps, in order. A scrape fills the catalogue with Listings, one record
+per Source. A rebuild groups each day's Listings into Events, so a happening
+five Sources listed is one thing rather than five. The read serves those
+Events.
+
+The rebuild runs once, after every Source has been scraped, and not inside the
+per-Source loop: a duplicate only becomes visible when *both* Sources have been
+ingested, so nothing about grouping can be decided while one Source is being
+processed.
 
 The scrape is orchestration only. Everything it decides is decided elsewhere: a
 Source knows how to fetch and parse itself, `normalize.py` decides what is
@@ -22,12 +28,13 @@ from sqlalchemy.orm import Session
 from ...core.config import settings
 from ...core.contracts import Address, Locate, Position
 from ...core.http import HttpClient
-from . import repository, sources
-from .models import Listing
+from . import dedup, repository, sources
+from .models import Event, Listing
 from .normalize import normalize
 from .schemas import EventRead
 from .scraped import (
     VIENNA_TZ,
+    BuiltEvent,
     NormalizedListing,
     RawListing,
     Rejected,
@@ -50,23 +57,21 @@ def _first(*candidates: str | None) -> str | None:
     return None
 
 
-def _localised(listing: Listing, de: str | None, en: str | None) -> str | None:
+def _localised(lang_primary: str, de: str | None, en: str | None) -> str | None:
     """The side of a de/en pair that `lang_primary` names, falling back to the
     other because a handful of rows disagree with their own lang_primary."""
-    return _first(en, de) if listing.lang_primary == "en" else _first(de, en)
+    return _first(en, de) if lang_primary == "en" else _first(de, en)
 
 
-def _address(listing: Listing) -> str | None:
+def _address(street: str | None, postcode: str | None, city: str | None) -> str | None:
     """`Stephansplatz 3, 1010 Wien`, or None when there is no street to build
     on - roughly 40% of geocoded Listings. Returning a bare "Wien" instead would
     look like a real answer and stop the caller from geocoding a better one."""
-    street = _first(listing.street)
+    street = _first(street)
     if street is None:
         return None
 
-    locality = " ".join(
-        part for part in (_first(listing.postcode), _first(listing.city)) if part
-    )
+    locality = " ".join(part for part in (_first(postcode), _first(city)) if part)
     return f"{street}, {locality}" if locality else street
 
 
@@ -80,10 +85,13 @@ def get_events_near(
 ) -> list[EventRead]:
     """What is on for `day` within `radius_meters` of `position`, nearest first.
 
+    One entry per real-world happening, whichever Sources listed it - the
+    grouping is a run's work, already done, and this only reads it.
+
     `day` must be the Venue's local calendar day, not the UTC one - Occurrences
     are dated by the local calendar.
     """
-    rows = repository.find_near(
+    rows = repository.find_events_near(
         db,
         latitude=position.latitude,
         longitude=position.longitude,
@@ -94,30 +102,201 @@ def get_events_near(
     )
 
     return [
-        _to_schema(listing, start_local, all_day, meters)
-        for listing, start_local, all_day, meters in rows
+        _to_schema(event, start_local, all_day, meters)
+        for event, start_local, all_day, meters in rows
     ]
 
 
 def _to_schema(
-    listing: Listing, start_local: datetime, all_day: bool, meters: float
+    event: Event, start_local: datetime, all_day: bool, meters: float
 ) -> EventRead:
     return EventRead(
-        id=listing.id,
-        title=_localised(listing, listing.title_de, listing.title_en)
+        id=event.id,
+        title=_localised(event.lang_primary, event.title_de, event.title_en)
         or "Untitled event",
         starts_at=start_local,
         all_day=all_day,
-        description=_localised(listing, listing.description_de, listing.description_en),
+        description=_localised(
+            event.lang_primary, event.description_de, event.description_en
+        ),
         # origin_url is null for about 70% of Listings, and an entry with no
         # link at all is worse than one pointing at the Source's own page.
-        origin_url=_first(listing.origin_url, listing.url),
-        image_url=_first(listing.image_url),
-        venue_name=_first(listing.venue_name_raw),
-        address=_address(listing),
-        position=Position(latitude=listing.lat, longitude=listing.lon),
+        origin_url=_first(event.origin_url, event.url),
+        image_url=_first(event.image_url),
+        venue_name=_first(event.venue_name_raw),
+        address=_address(event.street, event.postcode, event.city),
+        position=Position(latitude=event.lat, longitude=event.lon),
         distance_meters=round(meters),
     )
+
+
+def _candidate(
+    listing: Listing, day: date, all_day: bool, completeness: int
+) -> dedup.Candidate:
+    """One Listing on one day, as the matcher sees it.
+
+    `completeness` is not a matching signal - it decides which member of a
+    group the Event reads as, so leaving it at zero makes that the Source's
+    name in alphabetical order.
+    """
+    return dedup.Candidate(
+        listing_id=listing.id,
+        source=listing.source,
+        date_local=day,
+        title=_localised(listing.lang_primary, listing.title_de, listing.title_en)
+        or "",
+        title_norm=listing.title_norm,
+        venue_name=listing.venue_name_raw,
+        city=listing.city,
+        position=_position(listing),
+        all_day=all_day,
+        completeness=completeness,
+    )
+
+
+def _content(listing: Listing, *, completeness: int) -> dedup.Content:
+    """One Listing's share of an Event."""
+    return dedup.Content(
+        listing_id=listing.id,
+        source=listing.source,
+        lang_primary=listing.lang_primary,
+        title_de=listing.title_de,
+        title_en=listing.title_en,
+        description_de=listing.description_de,
+        description_en=listing.description_en,
+        venue_name=listing.venue_name_raw,
+        street=listing.street,
+        postcode=listing.postcode,
+        city=listing.city,
+        position=_position(listing),
+        url=listing.url,
+        origin_url=listing.origin_url,
+        image_url=listing.image_url,
+        completeness=completeness,
+    )
+
+
+def _position(listing: Listing) -> Position | None:
+    if listing.lat is None or listing.lon is None:
+        return None
+    return Position(latitude=listing.lat, longitude=listing.lon)
+
+
+def _completeness(listing: Listing, all_day: bool, end_known: bool) -> int:
+    """How much usable content a Listing carries, in the matcher's terms.
+
+    The mapping from columns to what each one is worth lives here rather than
+    in `dedup.py`: the weights are a matching rule, the columns are ours.
+    """
+    return dedup.completeness_score(
+        positioned=listing.lat is not None and listing.lon is not None,
+        street=bool(listing.street),
+        described=bool(listing.description_de or listing.description_en),
+        both_languages=bool(listing.title_de and listing.title_en),
+        image=bool(listing.image_url),
+        priced=listing.price_min is not None or bool(listing.is_free),
+        ticket_url=bool(listing.ticket_url),
+        all_day=all_day,
+        end_known=end_known,
+    )
+
+
+def _built(
+    group: dedup.Group,
+    contents: dict[int, dedup.Content],
+    durations: dict[int, int],
+) -> BuiltEvent | None:
+    """One group as a storable Event, or None if nobody could place it.
+
+    A group no Source gave a position for is dropped rather than stored: the
+    read filters on distance from a Rendezvous, so an Event with no position
+    could never be returned to anyone. The Listings stay, and the run after the
+    geocoder places one of them builds the Event.
+    """
+    primary = group.primary
+    merged = dedup.gap_fill(
+        contents[primary.listing_id],
+        [
+            contents[member.listing_id]
+            for member in group.members
+            if member.listing_id != primary.listing_id
+        ],
+    )
+    if merged.position is None:
+        return None
+
+    return BuiltEvent(
+        # The date is already a column of its own; the key only has to say
+        # which Listing this group is named after.
+        group_key=f"{merged.source}:{merged.listing_id}",
+        date_local=group.date_local,
+        duration_days=max(durations[member.listing_id] for member in group.members),
+        primary_listing_id=merged.listing_id,
+        listing_ids=[member.listing_id for member in group.members],
+        source=merged.source,
+        lang_primary=merged.lang_primary,
+        title_de=merged.title_de,
+        title_en=merged.title_en,
+        description_de=merged.description_de,
+        description_en=merged.description_en,
+        venue_name_raw=merged.venue_name,
+        street=merged.street,
+        postcode=merged.postcode,
+        city=merged.city,
+        lat=merged.position.latitude,
+        lon=merged.position.longitude,
+        url=merged.url,
+        origin_url=merged.origin_url,
+        image_url=merged.image_url,
+    )
+
+
+def rebuild_day(db: Session, day: date, *, run_id: str) -> int:
+    """Group one day's Listings into Events. Returns how many were written."""
+    rows = repository.day_candidates(db, day)
+
+    candidates: list[dedup.Candidate] = []
+    contents: dict[int, dedup.Content] = {}
+    durations: dict[int, int] = {}
+    for listing, all_day, duration_days, end_known in rows:
+        completeness = _completeness(listing, all_day, end_known)
+        candidates.append(_candidate(listing, day, all_day, completeness))
+        contents[listing.id] = _content(listing, completeness=completeness)
+        durations[listing.id] = duration_days
+
+    groups = dedup.group_day(candidates)
+    built = [
+        one
+        for one in (_built(group, contents, durations) for group in groups)
+        if one is not None
+    ]
+    return repository.write_events(db, day, built, run_id)
+
+
+def rebuild_events(
+    db: Session, *, run_id: str | None = None, today: date | None = None
+) -> int:
+    """Rebuild the Events of every day the catalogue still covers.
+
+    Every day rather than only the days a run touched: a rule change has to
+    reach the whole catalogue without a re-scrape, and a Listing retired by
+    this run has to leave the Events of days nothing else changed. The pass is
+    idempotent - the same Listings produce the same Events - so running it
+    again is a no-op rather than a second set of rows.
+    """
+    run_id = run_id or new_run_id()
+    today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
+    since = today - timedelta(days=settings.scrape_days_back)
+    until = today + timedelta(days=settings.scrape_days_ahead)
+    days = repository.days_to_rebuild(db, since=since, until=until)
+
+    total = sum(rebuild_day(db, day, run_id=run_id) for day in days)
+    # Whatever this run did not write is a group that no longer exists.
+    dropped = repository.drop_events_not_built_by(db, run_id, since=since, until=until)
+    logger.info(
+        "rebuilt %d event(s) over %d day(s), dropped %d", total, len(days), dropped
+    )
+    return total
 
 
 def new_run_id() -> str:
@@ -305,7 +484,12 @@ def scrape(
     # Vienna's calendar day. The window a Source is asked for, and the window
     # normalisation accepts, are both local-calendar windows.
     today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
-    return [
+    stats = [
         scrape_source(db, source, run_id=run_id, today=today, locate=locate)
         for source in discovered.values()
     ]
+
+    # Last, and over every Source at once: two Sources describing the same
+    # happening are only visible as one once both have been stored.
+    rebuild_events(db, run_id=run_id, today=today)
+    return stats

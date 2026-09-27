@@ -235,6 +235,21 @@ class ListingWriteError(AppBaseException):
         super().__init__(f"Listings for {source} could not be written")
 
 
+class EventWriteError(AppBaseException):
+    """Raised by the events repository when a run cannot store Events.
+
+    Like `ListingWriteError`, no route lists it: it belongs to the job, and a
+    run that cannot write the surface people read must fail loudly rather than
+    leave yesterday's Events in place and say nothing.
+    """
+
+    code = "event_write_error"
+    status = 503
+
+    def __init__(self, days: str):
+        super().__init__(f"Events for {days} could not be written")
+
+
 class GeocodeCacheError(AppBaseException):
     """Raised by the geocoding repository when its cache cannot be read or
     written. No route lists it; it is here because this file is the one

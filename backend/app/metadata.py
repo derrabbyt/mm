@@ -6,12 +6,21 @@ does, which is why it can sit above the modules instead of inside `db/`.
 """
 
 from .modules.accounts.models import Account
-from .modules.events.models import Listing, Occurrence, QuarantinedListing, SourceRun
+from .modules.events.models import (
+    Event,
+    EventListing,
+    Listing,
+    Occurrence,
+    QuarantinedListing,
+    SourceRun,
+)
 from .modules.geocoding.models import GeocodeCache
 from .modules.meetups.models import Meetup, MeetupParticipant
 
 __all__ = [
     "Account",
+    "Event",
+    "EventListing",
     "GeocodeCache",
     "Listing",
     "Meetup",

@@ -296,3 +296,113 @@ class SourceRun(Base):
     )
 
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Event(Base):
+    """One real-world happening on one day: what a person is actually shown.
+
+    Built by grouping a day's Listings (see `dedup.py`) and rendering the
+    richest of them, gap-filled from the rest. Entirely derived, and rebuilt
+    by every run - so a column added here needs a migration but never a
+    backfill, and there is no reason to carry a field before something reads
+    it. Why these Listings are one Event is not stored either: the membership
+    is, and the verdicts are reproducible from it with `dedup.compare`.
+
+    The times are not here. An Event is an identity; when it is on is still
+    the Occurrences' answer, reached through `event_listings`, so the two
+    cannot drift apart.
+    """
+
+    __tablename__ = "events"
+    __table_args__ = (
+        UniqueConstraint("date_local", "group_key", name="uq_events_day_group"),
+        # The read filters on the day first and the distance second.
+        Index("ix_events_day_range", "date_local", "duration_days"),
+        Index("ix_events_position", "lat", "lon"),
+        {"schema": CONTENT_SCHEMA},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+
+    # Names the group by the Listing that represents it, not by the set of its
+    # members, so a third Source joining an Event does not renumber the id the
+    # API has already served. It changes only when a richer Listing takes over.
+    group_key: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # The day this Event is on, and how many days beyond it the run covers -
+    # the same range an Occurrence carries, because that is where they come
+    # from. A museum open all year is one Event, not 365.
+    date_local: Mapped[date] = mapped_column(Date, nullable=False)
+    duration_days: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+
+    # The Listing this Event renders as. Its links and its Source are the
+    # Event's; everything else may be filled in from the other members.
+    primary_listing_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(f"{CONTENT_SCHEMA}.listings.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+
+    lang_primary: Mapped[str] = mapped_column(
+        Text, nullable=False, default="de", server_default=text("'de'")
+    )
+    title_de: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description_de: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    venue_name_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
+    street: Mapped[str | None] = mapped_column(Text, nullable=True)
+    postcode: Mapped[str | None] = mapped_column(Text, nullable=True)
+    city: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Never null in practice: a group with no position at all is not built,
+    # because the read filters on distance and could never return it.
+    lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    lon: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    origin_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    built_run: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class EventListing(Base):
+    """Which Listings one Event was built from.
+
+    Kept rather than implied, for two reasons: the read reaches the
+    Occurrences through it, and it is what makes a merge reproducible after
+    the run that decided it is over. Which member the Event reads as is not
+    here - `events.primary_listing_id` is that, and one answer is enough.
+    """
+
+    __tablename__ = "event_listings"
+    __table_args__ = (
+        Index("ix_event_listings_listing_id", "listing_id"),
+        {"schema": CONTENT_SCHEMA},
+    )
+
+    event_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(f"{CONTENT_SCHEMA}.events.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    listing_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(f"{CONTENT_SCHEMA}.listings.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
