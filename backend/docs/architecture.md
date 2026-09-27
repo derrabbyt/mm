@@ -29,13 +29,13 @@ modules/meetups/
 └── <name>.py      pure domain logic, named for what it does
 ```
 
-That last one is a category, not a file: `normalize.py`, `categories.py`,
-`region.py`. Values in, values out, no session and no import outside `core` - so
-it is neither a service (it orchestrates nothing) nor a repository (it touches
-no storage). Put it at the top of the module that needs it. Logic that turns out
-to be shared gets a named file in `core/` instead, the way `contracts.py` and
-`enums.py` did; there is no `utils.py`, and adding one would recreate the
-dumping ground `core/` exists to avoid.
+That last one is a category, not a file: `normalize.py`, `dedup.py`,
+`categories.py`, `region.py`. Values in, values out, no session and no import
+outside `core` - so it is neither a service (it orchestrates nothing) nor a
+repository (it touches no storage). Put it at the top of the module that needs
+it. Logic that turns out to be shared gets a named file in `core/` instead, the
+way `contracts.py` and `enums.py` did; there is no `utils.py`, and adding one
+would recreate the dumping ground `core/` exists to avoid.
 
 A module may also own a folder of adapters, where one capability means talking
 to many outside things that differ only in their details. `events/sources/` is
@@ -356,7 +356,7 @@ which is the point of having stubbed them:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — ten of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape and eleven of the twenty-one Sources are here: `content.listings` and four more with real models and real migrations, and the contract every Source follows in `events/sources/spec.py`. What is left is the other ten Sources, geocoding, and deduplicating Listings into Events |
+| **activity-loader** — ten of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape and eleven of the twenty-one Sources are here: `content.listings` and four more with real models and real migrations, and the contract every Source follows in `events/sources/spec.py`. What is left is the other ten Sources and building the Events themselves: geocoding is its own module, and the rules that decide whether two Listings are the same happening are `events/dedup.py` |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
 One thing in the codebase reads as permanent today and is not:
