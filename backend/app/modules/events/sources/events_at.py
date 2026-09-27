@@ -155,7 +155,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         seen.add(url)
 
         slug_match = _SLUG_ID.search(url)
-        source_event_id = (
+        source_ref = (
             slug_match.group(1) if slug_match else url.rstrip("/").rsplit("/", 1)[-1]
         )
 
@@ -168,7 +168,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         teaser_el = card.select_one("p.card-text") or block.select_one("p.card-text")
 
         yield RawListing(
-            source_event_id=source_event_id,
+            source_ref=source_ref,
             # The queried day is authoritative; no clock time in the listing.
             occurrences=[RawOccurrence(start=day)],
             url=url,

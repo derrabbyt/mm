@@ -79,8 +79,8 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             continue
         # .../id/43198223-kultursommer-wien -> the numeric id is stable.
         tail = url.rstrip("/").rsplit("/", 1)[-1]
-        source_event_id = tail.split("-", 1)[0] if tail[:1].isdigit() else tail
-        if not source_event_id or source_event_id in seen:
+        source_ref = tail.split("-", 1)[0] if tail[:1].isdigit() else tail
+        if not source_ref or source_ref in seen:
             continue
 
         start: dt.datetime | dt.date | None = parse_iso_datetime(node.get("startDate"))
@@ -90,7 +90,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
                 start = dt.date.fromisoformat(str(node.get("startDate"))[:10])
             except ValueError:
                 continue
-        seen.add(source_event_id)
+        seen.add(source_ref)
 
         where = jsonld.place(node)
         geo = jsonld.mapping(jsonld.mapping(node.get("location")).get("geo"))
@@ -107,7 +107,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         ]
 
         yield RawListing(
-            source_event_id=source_event_id,
+            source_ref=source_ref,
             occurrences=[RawOccurrence(start=start)],
             url=url,
             title=node.get("name") or (artists[0] if artists else None),

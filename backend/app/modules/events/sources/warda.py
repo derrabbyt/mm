@@ -167,7 +167,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             image = img.get("src")
 
     yield RawListing(
-        source_event_id=slug[:120],
+        source_ref=slug[:120],
         occurrences=[RawOccurrence(start=start)],
         url=payload.url,
         title=title,

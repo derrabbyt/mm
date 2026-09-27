@@ -68,14 +68,14 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         url = node.get("url") or ""
         # /en/event/{slug}-{id}: the trailing numeric id is the stable key.
         tail = url.rstrip("/").rsplit("/", 1)[-1]
-        source_event_id = tail.rsplit("-", 1)[-1] if "-" in tail else tail
-        if not source_event_id or source_event_id in seen:
+        source_ref = tail.rsplit("-", 1)[-1] if "-" in tail else tail
+        if not source_ref or source_ref in seen:
             continue
 
         start = parse_iso_datetime(node.get("startDate"))
         if start is None:
             continue
-        seen.add(source_event_id)
+        seen.add(source_ref)
         end = parse_iso_datetime(node.get("endDate"))
 
         where = jsonld.place(node)
@@ -91,7 +91,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         image = jsonld.first(node.get("image"))
 
         yield RawListing(
-            source_event_id=source_event_id,
+            source_ref=source_ref,
             occurrences=[RawOccurrence(start=start, end=end)],
             url=url or None,
             origin_url=same_as if isinstance(same_as, str) else None,

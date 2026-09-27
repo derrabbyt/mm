@@ -249,7 +249,7 @@ def normalize(
     if not title and not title_alt:
         return Rejected(
             source=source,
-            source_event_id=raw.source_event_id,
+            source_ref=raw.source_ref,
             reason="missing_title",
             raw=raw.model_dump(mode="json"),
         )
@@ -261,7 +261,7 @@ def normalize(
     if not raw.occurrences:
         return Rejected(
             source=source,
-            source_event_id=raw.source_event_id,
+            source_ref=raw.source_ref,
             reason="no_dates",
             raw=raw.model_dump(mode="json"),
         )
@@ -285,7 +285,7 @@ def normalize(
         reason = "all_dates_out_of_window" if out_of_window else "no_valid_dates"
         return Rejected(
             source=source,
-            source_event_id=raw.source_event_id,
+            source_ref=raw.source_ref,
             reason=reason,
             raw=raw.model_dump(mode="json"),
         )
@@ -331,7 +331,7 @@ def normalize(
 
     return NormalizedListing(
         source=source,
-        source_event_id=raw.source_event_id,
+        source_ref=raw.source_ref,
         url=raw.url,
         origin_url=raw.origin_url,
         title_de=titles["de"],

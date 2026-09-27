@@ -36,13 +36,13 @@ from ...db.base import CONTENT_SCHEMA, Base
 class Listing(Base):
     """One Source's record of a happening.
 
-    Identified across runs by `(source, source_event_id)` - the id the Source
+    Identified across runs by `(source, source_ref)` - the id the Source
     itself uses - so a re-scrape updates a row rather than duplicating it.
     """
 
     __tablename__ = "listings"
     __table_args__ = (
-        UniqueConstraint("source", "source_event_id", name="uq_listings_source_event"),
+        UniqueConstraint("source", "source_ref", name="uq_listings_source_ref"),
         Index("ix_listings_title_norm", "title_norm"),
         Index("ix_listings_venue_name_norm", "venue_name_norm"),
         Index("ix_listings_origin_url", "origin_url"),
@@ -59,9 +59,11 @@ class Listing(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
 
     source: Mapped[str] = mapped_column(Text, nullable=False)
-    # The Source's own id for the happening. Stable across runs for every Source
-    # that publishes one; synthesised from the page URL for those that do not.
-    source_event_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # The Source's own reference for the happening - not ours, and not an Event:
+    # whether two of these describe one Event is decided much later. Stable
+    # across runs for every Source that publishes one, and synthesised from the
+    # page URL for those that do not.
+    source_ref: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Exactly one of the title/description pairs is filled, the one named by
     # lang_primary; the other side is written as an empty string, not NULL.
@@ -228,7 +230,7 @@ class QuarantinedListing(Base):
 
     run_id: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False)
-    source_event_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     # The parsed record as it stood when normalisation gave up on it.

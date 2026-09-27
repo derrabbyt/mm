@@ -28,7 +28,7 @@ TODAY = dt.date(2026, 8, 10)
 
 def make(**kw) -> RawListing:
     base = {
-        "source_event_id": "x1",
+        "source_ref": "x1",
         "title": "Test Event",
         "occurrences": [RawOccurrence(start=dt.datetime(2026, 8, 15, 20, 0))],
     }

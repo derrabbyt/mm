@@ -45,7 +45,7 @@ class StubSource:
 
     def parse(self, payload: RawPayload) -> Iterator[RawListing]:
         yield RawListing(
-            source_event_id="stub-1",
+            source_ref="stub-1",
             occurrences=[RawOccurrence(start=self.starts_at)],
             title=self.title,
             description="Something to do",
@@ -179,7 +179,7 @@ async def test_a_listing_that_stopped_appearing_is_no_longer_served(
     replacement.parse = lambda payload: iter(
         [
             RawListing(
-                source_event_id="stub-2",
+                source_ref="stub-2",
                 occurrences=[RawOccurrence(start=replacement.starts_at)],
                 title="Stub reading",
                 city="Wien",
@@ -222,7 +222,7 @@ async def test_a_listing_with_no_coordinates_is_placed_by_its_address(
     unplaced.parse = lambda payload: iter(
         [
             RawListing(
-                source_event_id="stub-unplaced",
+                source_ref="stub-unplaced",
                 occurrences=[RawOccurrence(start=unplaced.starts_at)],
                 title="Needs placing",
                 venue_name="Somewhere",
@@ -290,7 +290,7 @@ async def test_a_record_that_cannot_be_normalised_costs_only_itself(
         [
             good,
             RawListing(
-                source_event_id="stub-untitled",
+                source_ref="stub-untitled",
                 occurrences=[RawOccurrence(start=mixed.starts_at)],
                 title=None,
                 city="Wien",

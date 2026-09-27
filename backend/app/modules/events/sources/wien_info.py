@@ -116,7 +116,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         category = item.get("category")
 
         yield RawListing(
-            source_event_id=str(item_id),
+            source_ref=str(item_id),
             occurrences=occurrences,
             url=url or None,
             title=item.get("title"),

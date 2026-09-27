@@ -25,7 +25,7 @@ def listing(db):
     def _make(title: str, starts: datetime, day: date, duration: int, all_day: bool):
         row = Listing(
             source="test",
-            source_event_id=title,
+            source_ref=title,
             lang_primary="de",
             title_de=title,
             title_en="",

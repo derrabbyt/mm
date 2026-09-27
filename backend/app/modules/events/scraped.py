@@ -74,7 +74,7 @@ class RawListing(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    source_event_id: str
+    source_ref: str
     occurrences: list[RawOccurrence] = Field(default_factory=list)
 
     url: str | None = None
@@ -111,20 +111,20 @@ class RawListing(BaseModel):
     image_url: str | None = None
     organizer: str | None = None
 
-    @field_validator("source_event_id", mode="before")
+    @field_validator("source_ref", mode="before")
     @classmethod
     def _id_to_str(cls, value: Any) -> str:
         # Sources use numeric ids freely.
         if value is None:
-            raise ValueError("source_event_id must not be None")
+            raise ValueError("source_ref must not be None")
         text = str(value).strip()
         if not text:
-            raise ValueError("source_event_id must not be blank")
+            raise ValueError("source_ref must not be blank")
         return text
 
     @field_validator(
         "postcode",
-        "source_event_id",
+        "source_ref",
         "title",
         "description",
         "venue_name",
@@ -174,7 +174,7 @@ class NormalizedListing(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str
-    source_event_id: str
+    source_ref: str
     url: str | None = None
     origin_url: str | None = None
 
@@ -255,7 +255,7 @@ class Rejected(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: str
-    source_event_id: str | None = None
+    source_ref: str | None = None
     # Machine-readable, because the valid/quarantined ratio per Source is a
     # health signal and "why" is the first question asked of a bad one.
     reason: str

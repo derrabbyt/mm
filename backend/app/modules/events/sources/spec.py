@@ -34,7 +34,7 @@ class SourceSpec:
 
     name: str
     # Which locales to fetch. Fetching two produces ONE Listing with two
-    # language columns, joined on source_event_id - never two Listings.
+    # language columns, joined on source_ref - never two Listings.
     locales: tuple[str, ...] = ("de",)
     # Politeness budget between requests, in seconds.
     delay_seconds: float = 0.5

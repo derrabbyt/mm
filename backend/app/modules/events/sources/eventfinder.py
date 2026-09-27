@@ -104,7 +104,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         year, month, day, hour, minute = (int(g) for g in slug_match.groups())
 
         id_match = _LISTING_ID.search(href)
-        source_event_id = (
+        source_ref = (
             id_match.group(1) if id_match else href.rstrip("/").rsplit("/", 1)[-1]
         )
 
@@ -129,7 +129,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
                 image = img["src"]
 
         yield RawListing(
-            source_event_id=source_event_id,
+            source_ref=source_ref,
             # Naive on purpose: the slug states Vienna wall-clock, which is
             # what `RawOccurrence` reads a naive datetime as. Attaching an
             # offset here would shift the very time the slug spelled out.

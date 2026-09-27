@@ -124,7 +124,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
         slug = hit.get("fullSlug")
         yield RawListing(
-            source_event_id=str(listing_id),
+            source_ref=str(listing_id),
             occurrences=[occurrence],
             url=f"https://www.austria.info/{slug}" if slug else None,
             origin_url=_link(hit.get("eventLink")),

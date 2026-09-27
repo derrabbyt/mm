@@ -4,7 +4,7 @@
 `EventsLoadError` and the write path `ListingWriteError`, so a service reads as
 what it does rather than as error plumbing.
 
-Writes are upserts keyed on `(source, source_event_id)`. Every touch stamps
+Writes are upserts keyed on `(source, source_ref)`. Every touch stamps
 `last_seen_run`, and that stamp is what says whether a row is still real:
 
 * a **Listing** the run did not touch is retired with `disappeared_at` rather
@@ -174,7 +174,7 @@ def upsert_listing(db: Session, listing: NormalizedListing, run_id: str) -> int:
     values = listing.model_dump(mode="json", include=set(_LISTING_COLUMNS))
     values |= {
         "source": listing.source,
-        "source_event_id": listing.source_event_id,
+        "source_ref": listing.source_ref,
         "lat": listing.lat,
         "lon": listing.lon,
         "geo_source": listing.geo_source,
@@ -185,7 +185,7 @@ def upsert_listing(db: Session, listing: NormalizedListing, run_id: str) -> int:
 
     statement = insert(Listing).values(**values)
     statement = statement.on_conflict_do_update(
-        index_elements=[Listing.source, Listing.source_event_id],
+        index_elements=[Listing.source, Listing.source_ref],
         set_={
             **{column: statement.excluded[column] for column in _LISTING_COLUMNS},
             # A position already resolved is not clobbered by a later run that
@@ -276,7 +276,7 @@ def quarantine(db: Session, rejected: Sequence[Rejected], run_id: str) -> int:
                 {
                     "run_id": run_id,
                     "source": one.source,
-                    "source_event_id": one.source_event_id,
+                    "source_ref": one.source_ref,
                     "reason": one.reason,
                     "raw": one.raw,
                 }

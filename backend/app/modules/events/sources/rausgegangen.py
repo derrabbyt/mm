@@ -160,8 +160,8 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
     for node in jsonld.events_in(payload.text):
         url = node.get("url") or payload.url
-        source_event_id = url.rstrip("/").rsplit("/", 1)[-1]
-        if not source_event_id:
+        source_ref = url.rstrip("/").rsplit("/", 1)[-1]
+        if not source_ref:
             continue
 
         start = parse_iso_datetime(node.get("startDate"))
@@ -176,7 +176,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         image = jsonld.first(node.get("image"))
 
         yield RawListing(
-            source_event_id=source_event_id,
+            source_ref=source_ref,
             occurrences=[RawOccurrence(start=start, end=end)],
             url=url,
             origin_url=ticket_url,

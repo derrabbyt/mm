@@ -114,7 +114,7 @@ class TestWienInfo:
 
     def test_parses_listings(self, listings):
         assert len(listings) >= 20, "the fixture holds 24 items; most should parse"
-        assert all(one.source_event_id for one in listings)
+        assert all(one.source_ref for one in listings)
         assert all(one.occurrences for one in listings)
 
     def test_the_locale_comes_from_the_payload(self, listings):
@@ -223,11 +223,11 @@ class TestGoodnight:
 
     def test_parses_listings(self, listings):
         assert listings, "the fixture covers a 14-day window"
-        assert all(one.source_event_id for one in listings)
+        assert all(one.source_ref for one in listings)
 
     def test_the_same_item_in_several_day_buckets_is_one_listing(self, listings):
         """A multi-day item repeats in every day bucket of the response."""
-        ids = [one.source_event_id for one in listings]
+        ids = [one.source_ref for one in listings]
         assert len(ids) == len(set(ids))
 
     def test_an_empty_list_address_does_not_read_as_missing(self, listings):
@@ -457,7 +457,7 @@ class TestAustriaInfo:
             (FIXTURES / "austria_info" / "query.json").read_text(encoding="utf-8")
         )
         story_ids = {str(hit["story_id"]) for hit in raw["hits"] if hit.get("story_id")}
-        assert {one.source_event_id for one in listings} <= story_ids
+        assert {one.source_ref for one in listings} <= story_ids
 
     def test_a_long_run_stays_a_span(self, listings):
         """An institution runs for months; that is a span, not a fabricated day."""
@@ -489,7 +489,7 @@ class TestEventfinder:
             assert start.year >= 2026
 
     def test_ids_are_numeric(self, listings):
-        assert all(one.source_event_id.isdigit() for one in listings)
+        assert all(one.source_ref.isdigit() for one in listings)
 
     def test_a_carousel_card_is_not_a_result(self):
         """A card inside `.splide__slide` is a recommendation, not a search hit.
@@ -693,7 +693,7 @@ def test_every_parse_yields_usable_listings(source, fixture, kind, meta):
     assert listings, f"{source.SPEC.name} yielded nothing from its own fixture"
     for one in listings:
         assert isinstance(one, RawListing)
-        assert one.source_event_id.strip()
+        assert one.source_ref.strip()
         assert one.occurrences
         # Normalisation quarantines a title-less record, so a parse yielding one
         # is a silent loss rather than an error - which is why it is caught here.

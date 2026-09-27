@@ -92,7 +92,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         party_type = item.get("nameType")
 
         yield RawListing(
-            source_event_id=str(party_id),
+            source_ref=str(party_id),
             occurrences=[
                 RawOccurrence(start=start, end=parse_iso_datetime(item.get("dateEnd")))
             ],

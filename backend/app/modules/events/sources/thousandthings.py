@@ -309,15 +309,13 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         # The post carries no id per happening, so derive one that survives the
         # week's rewrites: the title plus its first date.
         listing_key = f"{heading}-{schedule[0][0].isoformat()}"
-        source_event_id = re.sub(r"[^\w\-]+", "-", listing_key.casefold()).strip("-")[
-            :120
-        ]
-        if source_event_id in seen:
+        source_ref = re.sub(r"[^\w\-]+", "-", listing_key.casefold()).strip("-")[:120]
+        if source_ref in seen:
             continue
-        seen.add(source_event_id)
+        seen.add(source_ref)
 
         yield RawListing(
-            source_event_id=source_event_id,
+            source_ref=source_ref,
             occurrences=occurrences,
             url=link,
             # The organiser's own announcement, and a strong cross-Source key:

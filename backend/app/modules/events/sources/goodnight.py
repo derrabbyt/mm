@@ -122,7 +122,7 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             slug = item.get("slug")
 
             yield RawListing(
-                source_event_id=str(event_id),
+                source_ref=str(event_id),
                 occurrences=[RawOccurrence(start=start, end=end)],
                 url=f"{BASE}/events/{slug}" if slug else None,
                 # Outbound link to the organiser/ticket page: a dedup key.
