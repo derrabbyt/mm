@@ -250,6 +250,21 @@ class EventWriteError(AppBaseException):
         super().__init__(f"Events for {days} could not be written")
 
 
+class ScrapeLockError(AppBaseException):
+    """Raised when a run cannot find out whether another one is in progress.
+
+    Like the two above, no route lists it. A run that could not ask must not
+    assume it is alone: two overlapping scrapes each retire the Listings the
+    other has just written, so failing here is safer than carrying on.
+    """
+
+    code = "scrape_lock_error"
+    status = 503
+
+    def __init__(self):
+        super().__init__("The scrape lock could not be taken")
+
+
 class GeocodeCacheError(AppBaseException):
     """Raised by the geocoding repository when its cache cannot be read or
     written. No route lists it; it is here because this file is the one

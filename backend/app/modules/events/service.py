@@ -13,9 +13,12 @@ processed.
 The scrape is orchestration only. Everything it decides is decided elsewhere: a
 Source knows how to fetch and parse itself, `normalize.py` decides what is
 storable, and `repository.py` owns the SQL. What is left here is the order of
-those steps, and the two rules about when a step may run at all - a run that
-could not fetch never retires anything, and one Source failing never stops the
-others.
+those steps, and the rules about when a step may run at all. One is about
+carrying on - a Source that fails never stops the others - and the rest are about
+retiring, because removing a Listing is the only thing a run does that a person
+could notice going wrong: a run that could not fetch never retires anything, a
+run that would retire an implausible share of one Source retires nothing for it,
+and only one run happens at a time.
 """
 
 import logging
@@ -38,6 +41,7 @@ from .scraped import (
     NormalizedListing,
     RawListing,
     Rejected,
+    ScrapeOutcome,
     SourceRunStats,
 )
 from .sources.spec import FetchContext, Source
@@ -375,6 +379,50 @@ def _positioned(listing: NormalizedListing, locate: Locate | None) -> Normalized
     )
 
 
+def _retire_unless_collapsed(
+    db: Session, source: str, run_id: str, *, since: date, until: date
+) -> int:
+    """Retire the Listings this run did not see, unless implausibly many of them.
+
+    A site that changed its markup, or served one page of the twenty it had,
+    looks from here exactly like a site that cancelled almost everything. The
+    share is what tells them apart: a Source does not lose most of its programme
+    between two runs, so a run that would retire more than
+    `scrape_max_retired_share` of one retires nothing for it and says so loudly.
+
+    Each Source is judged on its own counts, so one broken site costs only its
+    own retirements rather than the whole run's. See
+    docs/adr/0004-a-run-is-guarded-by-a-lock-and-a-volume-floor.md for the
+    thresholds and for what this knowingly costs.
+
+    `since` and `until` are the window this run asked the Source for, and the
+    share is taken over the Listings showing in it - the programme this run could
+    have contradicted. That is also what lets a Source recover: a site that
+    really did shrink goes on being refused while the Listings it dropped are
+    still dated inside the window, and once their dates pass they stop counting
+    against it and the next run retires them. Measured against the Source's whole
+    history instead, one breach would refuse every retirement it ever made again.
+    """
+    live, unseen = repository.listing_counts(
+        db, source, run_id, since=since, until=until
+    )
+    share = unseen / live if live else 0.0
+    if share > settings.scrape_max_retired_share:
+        # ERROR rather than WARNING: a real collapse wants somebody looking at
+        # the Source, and no threshold can tell that from a broken parser.
+        logger.error(
+            "%s: refusing to retire %d of %d Listing(s) - %.0f%% is over the %.0f%% "
+            "a run may retire, so the Source looks broken rather than empty",
+            source,
+            unseen,
+            live,
+            share * 100,
+            settings.scrape_max_retired_share * 100,
+        )
+        return 0
+    return repository.retire_unseen(db, source, run_id)
+
+
 def scrape_source(
     db: Session,
     source: Source,
@@ -424,7 +472,9 @@ def scrape_source(
     # an empty page would retire the whole Source.
     retired = 0
     if error is None and storable:
-        retired = repository.retire_unseen(db, spec.name, run_id)
+        retired = _retire_unless_collapsed(
+            db, spec.name, run_id, since=ctx.date_from, until=ctx.date_to
+        )
 
     quarantined = repository.quarantine(db, refused, run_id)
 
@@ -465,7 +515,7 @@ def scrape_source(
 
 def scrape(
     db: Session, *, today: date | None = None, locate: Locate | None = None
-) -> list[SourceRunStats]:
+) -> ScrapeOutcome:
     """Scrape every Source, one after another.
 
     Sequential on purpose: twenty-one Sources at polite delays is still only
@@ -473,23 +523,34 @@ def scrape(
     anyone. A Source that needs concurrency for detail pages does it inside its
     own `fetch`.
 
+    One run at a time, and a run that finds another in progress declines rather
+    than joining it. What says a Listing is still real is the run that last saw
+    it, so a second run stamping its own id retires the first run's Listings
+    underneath it - and the first then does the same back. A fifteen-to-
+    twenty-five-minute job on an hourly schedule makes that a matter of one slow
+    run, not of a misconfiguration.
+
     `locate` resolves an address to a position. Without one, a Listing whose
     Source published no coordinates is stored anyway and simply cannot be found
     near a Rendezvous - the address is kept, so a later run can still place it.
     """
-    run_id = new_run_id()
-    discovered = sources.discover()
-    logger.info("Run %s starting over %d source(s)", run_id, len(discovered))
+    with repository.scrape_lock(db) as acquired:
+        if not acquired:
+            return ScrapeOutcome(declined="another run is already in progress")
 
-    # Vienna's calendar day. The window a Source is asked for, and the window
-    # normalisation accepts, are both local-calendar windows.
-    today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
-    stats = [
-        scrape_source(db, source, run_id=run_id, today=today, locate=locate)
-        for source in discovered.values()
-    ]
+        run_id = new_run_id()
+        discovered = sources.discover()
+        logger.info("Run %s starting over %d source(s)", run_id, len(discovered))
 
-    # Last, and over every Source at once: two Sources describing the same
-    # happening are only visible as one once both have been stored.
-    rebuild_events(db, run_id=run_id, today=today)
-    return stats
+        # Vienna's calendar day. The window a Source is asked for, and the window
+        # normalisation accepts, are both local-calendar windows.
+        today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
+        stats = [
+            scrape_source(db, source, run_id=run_id, today=today, locate=locate)
+            for source in discovered.values()
+        ]
+
+        # Last, and over every Source at once: two Sources describing the same
+        # happening are only visible as one once both have been stored.
+        rebuild_events(db, run_id=run_id, today=today)
+        return ScrapeOutcome(sources=stats)

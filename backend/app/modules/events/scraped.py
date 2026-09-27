@@ -12,7 +12,8 @@ Two shapes, and the step between them is `normalize.py`:
     up with the columns in `models.py`.
 
 Plus what a run has to say for itself afterwards: `Rejected` for a record
-normalisation refused, and `SourceRunStats` for what one Source did.
+normalisation refused, `SourceRunStats` for what one Source did, and
+`ScrapeOutcome` for the run as a whole.
 
 The `date` vs `datetime` distinction in `RawOccurrence.start` is load-bearing: a
 plain `date` means "this happens on this day, time unknown" and becomes
@@ -287,6 +288,23 @@ class SourceRunStats(BaseModel):
     occurrences_count: int = 0
 
     error: str | None = None
+
+
+class ScrapeOutcome(BaseModel):
+    """What one run did, or the reason it did nothing.
+
+    A run that found another one already in progress is neither a failure nor a
+    success: it declined. Telling the two apart is what the caller above needs -
+    one means the catalogue was refreshed and the other means it was not, and a
+    scheduler firing on top of a long run must not read as a broken scrape.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Why the run did nothing, in the words of whoever decided it. None when it
+    # ran, which is what `sources` being empty cannot say on its own.
+    declined: str | None = None
+    sources: list[SourceRunStats] = Field(default_factory=list)
 
 
 class Rejected(BaseModel):

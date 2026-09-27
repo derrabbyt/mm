@@ -7,10 +7,16 @@ Listings and then asking the endpoint that serves what is on near a Rendezvous.
 **Only the response is asserted.** Nothing here reaches into a repository or
 counts rows: the point is what a caller can observe, and the layers in between
 are expected to be rearranged by the work that follows.
+
+The two guards that make a run safe to schedule are the exception, and only as
+far as they have to be. What an operator observes of a job is its log, so a guard
+whose whole job is to refuse loudly is asserted on the log as well as on the
+response - and one of them *arranges* through the repository, because taking the
+run lock is the only way to put a run in progress without running one.
 """
 
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -18,7 +24,9 @@ import pytest
 
 from app.core.contracts import Address, Located, Position
 from app.core.enums import TravelMode
+from app.db.session import SessionLocal
 from app.jobs import scrape_events as job
+from app.modules.events import repository as catalogue
 from app.modules.events import sources as source_registry
 from app.modules.events.scraped import RawListing, RawOccurrence
 from app.modules.events.sources.spec import FetchContext, RawPayload, SourceSpec
@@ -572,3 +580,96 @@ async def test_the_richest_listing_is_the_one_the_event_reads_as(
     ]
     assert event["description"] == "Doors at 19:00, support act announced"
     assert event["origin_url"] == "https://stadthalle.test/deep-purple"
+
+
+# Five things on one evening, named so that no two of them can be read as the
+# same happening: the matcher compares titles first, and these share no token.
+PROGRAMME = ("Alpha", "Bravo", "Charlie", "Delta", "Echo")
+OTHER_PROGRAMME = ("Foxtrot", "Golf", "Hotel", "India", "Juliett")
+
+
+def programme(source: str, titles: Sequence[str], starts_at: datetime) -> ListingSource:
+    """A Source listing each of `titles` at the reference point."""
+    return ListingSource(
+        source,
+        *(
+            listing(f"{source}-{index}", title, starts_at)
+            for index, title in enumerate(titles)
+        ),
+    )
+
+
+async def test_a_run_started_while_one_is_in_progress_changes_nothing(
+    client, meetup, meeting_at, run_scrape, caplog
+):
+    """Two overlapping runs would each retire what the other had just written.
+
+    What says a Listing is still real is the run that last saw it, so a second
+    run stamping its own id retires the first run's Listings underneath it, and
+    the first run then does the same back. The second one declines instead.
+    """
+    run_scrape(StubSource(meeting_at + timedelta(minutes=30)))
+
+    # What a run in progress is holding, on its own connection. Not a second
+    # scrape - only the one thing a second scrape would be holding, which is
+    # what the guard actually reads.
+    with SessionLocal() as other, catalogue.scrape_lock(other) as held:
+        assert held, "nothing else may be holding the scrape lock"
+        run_scrape(
+            ListingSource(
+                "stub",
+                listing("stub-2", "Stub reading", meeting_at + timedelta(minutes=45)),
+            )
+        )
+
+    titles = {one["title"] for one in await _events(client, meetup)}
+
+    # Nothing written, and nothing retired either.
+    assert "Stub reading" not in titles
+    assert "Stub concert" in titles
+    # Clean, and loud enough to tell an operator which of the two it was.
+    assert "another run" in caplog.text
+
+
+async def test_a_source_that_collapsed_retires_nothing(
+    client, meetup, meeting_at, run_scrape, caplog
+):
+    """A site that changed its markup looks exactly like a site that cancelled
+    almost everything. The share is the difference: a Source does not lose most
+    of its programme between two runs, so the run refuses and says so."""
+    starts_at = meeting_at + timedelta(minutes=30)
+    run_scrape(programme("stub", PROGRAMME, starts_at))
+    assert set(PROGRAMME) <= {one["title"] for one in await _events(client, meetup)}
+
+    # The same Source, now returning one of the five it had.
+    run_scrape(programme("stub", PROGRAMME[:1], starts_at))
+
+    assert set(PROGRAMME) <= {one["title"] for one in await _events(client, meetup)}
+    # Loudly, because a Source that really did shrink this far wants a person.
+    assert "refusing to retire 4 of 5" in caplog.text
+    assert any(record.levelname == "ERROR" for record in caplog.records)
+
+
+async def test_one_source_collapsing_does_not_stop_another_retiring(
+    client, meetup, meeting_at, run_scrape
+):
+    """The share is each Source's own, so one broken site costs only its own
+    retirements - a run is not all-or-nothing across twenty-one of them."""
+    starts_at = meeting_at + timedelta(minutes=30)
+    run_scrape(
+        programme("stub", PROGRAMME, starts_at),
+        programme("other", OTHER_PROGRAMME, starts_at),
+    )
+
+    # One Source collapses to a single Listing; the other drops one, which is
+    # the kind of change a Source really does make.
+    run_scrape(
+        programme("stub", PROGRAMME[:1], starts_at),
+        programme("other", OTHER_PROGRAMME[:-1], starts_at),
+    )
+
+    titles = {one["title"] for one in await _events(client, meetup)}
+
+    assert set(PROGRAMME) <= titles
+    assert set(OTHER_PROGRAMME[:-1]) <= titles
+    assert OTHER_PROGRAMME[-1] not in titles

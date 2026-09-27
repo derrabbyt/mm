@@ -322,6 +322,14 @@ replaces `--every` with a real scheduler (a Kubernetes CronJob, an ECS
 scheduled task, a crontab line) running the same command — the application
 code does not change.
 
+A scheduler that fires while the previous run is still going is an ordinary
+thing to happen — `scrape-events` takes fifteen to twenty-five minutes on an
+hourly schedule — so a job that cannot survive it is not schedulable. The scrape
+takes a Postgres advisory lock for the length of a run and the second run exits
+0 having done nothing. That belongs to the scrape rather than to the runner: what
+is unsafe about two runs is specific to what they write, and `--list` or a
+read-only job has nothing to protect.
+
 Add a job in two steps: write the function in the owning module's `jobs.py`,
 then name it in `app/jobs/registry.py`. A job that needs *two* modules is written
 in `app/jobs/` instead, for the reason given above. The registry stores import
@@ -358,7 +366,7 @@ which is the point of having stubbed them:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — ten of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape, the deduplication and eleven of the twenty-one Sources are here, with real models and real migrations: a run fills `content.listings` and then groups them into `content.events`, which is what the API serves. What is left is the other ten Sources, and the run-safety, archive and database-role work that lets the standalone scraper be switched off |
+| **activity-loader** — ten of the Source adapters, and the deduplication pass | the `scrape-events` job in `modules/events` | the tables, the scrape, the deduplication and eleven of the twenty-one Sources are here, with real models and real migrations: a run fills `content.listings` and then groups them into `content.events`, which is what the API serves. A run takes an advisory lock and refuses to retire an implausible share of any one Source, so it is safe to schedule. What is left is the other ten Sources, and the archive and database-role work that lets the standalone scraper be switched off |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
 One thing in the codebase reads as permanent today and is not:

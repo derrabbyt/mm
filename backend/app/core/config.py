@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Self
 from urllib.parse import quote_plus
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -41,6 +41,16 @@ class Settings(BaseSettings):
     # The shared read timeout. A Source that needs longer says so in its spec:
     # wien.gv.at server-generates a ~490 KB index and takes ~32s to hand it over.
     scrape_timeout_seconds: float = 30.0
+    # The most of one Source's Listings a single run may retire; above it the run
+    # retires nothing for that Source. Why that is worth guarding is at the guard
+    # itself. 0.6 is the 40% volume-drop rule the scraper alerted on, read from
+    # the other side: a run keeping under 40% of what a Source had was already
+    # the number somebody was expected to look at.
+    #
+    # Bounded, because it is a share and the failure is silent in one direction:
+    # somebody typing 60 for "60%" would otherwise switch the guard off and
+    # nothing would say so until a Source emptied itself.
+    scrape_max_retired_share: float = Field(default=0.6, ge=0.0, le=1.0)
 
     # The geocoder, which is the Photon that docker compose runs. Configuration
     # rather than a constant, and with no public default: an address is somebody's

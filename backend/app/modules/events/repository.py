@@ -2,7 +2,11 @@
 
 `SQLAlchemyError` never leaves this file: the read path raises
 `EventsLoadError` and the write path `ListingWriteError`, so a service reads as
-what it does rather than as error plumbing.
+what it does rather than as error plumbing. Two statements here are neither a
+read of the catalogue nor a write to it: `scrape_lock`, the run's own guard
+against a second run, and `listing_counts`, the read half of retiring. Both are
+SQL, so both live with the rest of it, and both answer to the write path -
+a run that cannot ask must not carry on regardless.
 
 Two surfaces, and only one of them is served. Listings and their Occurrences
 are what a scrape writes; **Events** are what a person is shown, rebuilt from
@@ -20,7 +24,8 @@ Writes are upserts keyed on `(source, source_ref)`. Every touch stamps
   Listing is still there and the date simply moved.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager, suppress
 from datetime import date, datetime
 
 from sqlalchemy import (
@@ -42,7 +47,12 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from ...core.exceptions import EventsLoadError, EventWriteError, ListingWriteError
+from ...core.exceptions import (
+    EventsLoadError,
+    EventWriteError,
+    ListingWriteError,
+    ScrapeLockError,
+)
 from .models import (
     Event,
     EventListing,
@@ -52,6 +62,43 @@ from .models import (
     SourceRun,
 )
 from .scraped import BuiltEvent, NormalizedListing, Rejected, SourceRunStats
+
+# The name of the run lock. Postgres gives advisory locks one flat namespace
+# across the whole database, so this number *is* the name: two runs only see
+# each other if they ask about the same one, and changing it silently stops them
+# doing so.
+SCRAPE_LOCK_KEY = 8_531_002
+
+
+@contextmanager
+def scrape_lock(db: Session) -> Iterator[bool]:
+    """Hold the run lock for the block, or report not having got it.
+
+    Session-level rather than transaction-level. A scrape commits once per
+    Source, and a transaction-level lock would be released by the first of those
+    commits, leaving the rest of the run unguarded - which is the part of a run
+    that does the retiring.
+
+    Non-blocking on purpose: a scheduled run that queued behind its predecessor
+    would still be waiting when the scheduler fired the next one. See
+    docs/adr/0004-a-run-is-guarded-by-a-lock-and-a-volume-floor.md.
+    """
+    try:
+        acquired = bool(
+            db.execute(select(func.pg_try_advisory_lock(SCRAPE_LOCK_KEY))).scalar_one()
+        )
+    except SQLAlchemyError as exc:
+        raise ScrapeLockError() from exc
+
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            # A session-level lock is released with its connection anyway, so
+            # failing here leaks nothing - and raising would replace whatever the
+            # run was already failing with.
+            with suppress(SQLAlchemyError):
+                db.execute(select(func.pg_advisory_unlock(SCRAPE_LOCK_KEY)))
 
 
 def _distance_meters(latitude: float, longitude: float) -> ColumnElement[float]:
@@ -467,11 +514,59 @@ def quarantine(db: Session, rejected: Sequence[Rejected], run_id: str) -> int:
     return len(rejected)
 
 
+def listing_counts(
+    db: Session, source: str, run_id: str, *, since: date, until: date
+) -> tuple[int, int]:
+    """How many of a Source's live Listings show in the window, and how many of
+    those `run_id` did not see.
+
+    The window is the one the run asked the Source for, so between them these
+    two numbers describe the programme this run could have contradicted -
+    which is what makes a share of them mean anything.
+
+    Counting the Source's whole history instead would hold a past breach against
+    it for good: Listings left live by a refused retirement would sit in the
+    denominator with nothing able to clear them, and `retire_unseen` is the only
+    thing that clears one. Windowed, they stop being counted once their dates
+    pass, and the run that follows can retire them.
+
+    `ListingWriteError` rather than `EventsLoadError` despite being a read: this
+    is the first half of retiring, and a run that cannot count must fail rather
+    than carry on and retire blind.
+    """
+    # EXISTS rather than a join - a Listing with eight Occurrences is one
+    # Listing, and a join would count it eight times.
+    shows_in_window = (
+        select(Occurrence.listing_id)
+        .where(
+            Occurrence.listing_id == Listing.id,
+            Occurrence.date_local <= until,
+            Occurrence.date_local + Occurrence.duration_days >= since,
+        )
+        .exists()
+    )
+    query = select(
+        func.count(),
+        func.count().filter(Listing.last_seen_run != run_id),
+    ).where(
+        Listing.source == source,
+        Listing.disappeared_at.is_(None),
+        shows_in_window,
+    )
+    try:
+        live, unseen = db.execute(query).one()
+    except SQLAlchemyError as exc:
+        raise ListingWriteError(source) from exc
+    return live, unseen
+
+
 def retire_unseen(db: Session, source: str, run_id: str) -> int:
     """Retire this Source's Listings that `run_id` did not touch.
 
     The caller must only reach here after a fetch that actually succeeded -
-    otherwise a transient outage retires the Source's whole catalogue.
+    otherwise a transient outage retires the Source's whole catalogue - and only
+    when what it would retire is a plausible share of the Source, which is the
+    service's call to make from `listing_counts`.
     """
     try:
         result = db.execute(
