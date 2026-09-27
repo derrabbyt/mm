@@ -235,6 +235,18 @@ class ListingWriteError(AppBaseException):
         super().__init__(f"Listings for {source} could not be written")
 
 
+class GeocodeCacheError(AppBaseException):
+    """Raised by the geocoding repository when its cache cannot be read or
+    written. No route lists it; it is here because this file is the one
+    catalogue."""
+
+    code = "geocode_cache_error"
+    status = 503
+
+    def __init__(self):
+        super().__init__("The geocoding cache could not be reached")
+
+
 class AccountUpsertError(AppBaseException):
     code = "account_upsert_error"
     status = 503

@@ -16,8 +16,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from app.core.contracts import Address, Located, Position
 from app.core.enums import TravelMode
-from app.modules.events import jobs
+from app.jobs import scrape_events as job
 from app.modules.events import sources as source_registry
 from app.modules.events.scraped import RawListing, RawOccurrence
 from app.modules.events.sources.spec import FetchContext, RawPayload, SourceSpec
@@ -116,14 +117,23 @@ def meetup(db, account, meeting_at) -> Meetup:
 
 @pytest.fixture
 def run_scrape(db, monkeypatch):
-    """Register a Source and run the job over the test's own session."""
+    """Register a Source and run the job over the test's own session.
 
-    def _run(source) -> None:
+    Geocoding is off unless a test hands over a `locate`: no test may depend on a
+    geocoder being reachable, and none may ask a real one for an address.
+    """
+
+    def _run(source, locate=None) -> None:
         monkeypatch.setattr(
             source_registry, "discover", lambda: {source.SPEC.name: source}
         )
-        monkeypatch.setattr(jobs, "SessionLocal", lambda: LentSession(db))
-        jobs.scrape_events()
+        monkeypatch.setattr(job, "SessionLocal", lambda: LentSession(db))
+        monkeypatch.setattr(
+            job.geocoding,
+            "locator",
+            lambda _db, enabled=True: locate or (lambda _: None),
+        )
+        job.scrape_events()
 
     return _run
 
@@ -201,6 +211,58 @@ async def test_a_listing_whose_date_moved_leaves_the_old_day(
     run_scrape(StubSource(meeting_at + timedelta(days=2, minutes=30)))
 
     assert "Stub concert" not in {one["title"] for one in await _events(client, meetup)}
+
+
+async def test_a_listing_with_no_coordinates_is_placed_by_its_address(
+    client, meetup, meeting_at, run_scrape
+):
+    """Most Sources publish no coordinates, and the read filters on distance - so
+    without this the Listing exists and can never be shown to anyone."""
+    unplaced = StubSource(meeting_at + timedelta(minutes=30), title="Needs placing")
+    unplaced.parse = lambda payload: iter(
+        [
+            RawListing(
+                source_event_id="stub-unplaced",
+                occurrences=[RawOccurrence(start=unplaced.starts_at)],
+                title="Needs placing",
+                venue_name="Somewhere",
+                street="Stephansplatz 3",
+                postcode="1010",
+                city="Wien",
+            )
+        ]
+    )
+
+    asked: list[Address] = []
+
+    def locate(address: Address) -> Located | None:
+        asked.append(address)
+        return Located(
+            position=Position(latitude=LATITUDE, longitude=LONGITUDE),
+            precision="exact",
+        )
+
+    run_scrape(unplaced, locate=locate)
+
+    assert "Needs placing" in {one["title"] for one in await _events(client, meetup)}
+    # It was asked with what the Source actually gave, not with a guess.
+    assert asked and asked[0].street == "Stephansplatz 3"
+
+
+async def test_a_listing_the_source_already_placed_is_not_geocoded(
+    client, meetup, meeting_at, run_scrape
+):
+    """The Source saw the happening; the geocoder is only reading words."""
+    asked: list[Address] = []
+
+    def locate(address: Address) -> Located | None:
+        asked.append(address)
+        return None
+
+    run_scrape(StubSource(meeting_at + timedelta(minutes=30)), locate=locate)
+
+    assert "Stub concert" in {one["title"] for one in await _events(client, meetup)}
+    assert asked == []
 
 
 async def test_a_source_that_cannot_be_fetched_fails_the_run(

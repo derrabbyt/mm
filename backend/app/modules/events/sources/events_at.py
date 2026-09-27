@@ -8,7 +8,7 @@ Two things about their URL scheme are easy to get wrong, and both fail *silently
 2. The `[]` in `state[]` / `event_type[]` **must stay literal**. Sent as
    `%5B%5D` the site answers 200 with the filters ignored, so the whole day
    comes back and it looks like the filter matched everything. This is why the
-   HTTP client is built on stdlib `urllib` - see `sources/http.py`.
+   HTTP client is built on stdlib `urllib` - see `core/http.py`.
 
 Each happening appears twice per listing - a desktop `card--horizontal` and a
 mobile `card--event-timeline` inside one `div.searchResults__timeline` - so the
@@ -25,8 +25,8 @@ from collections.abc import Iterator
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 
+from ....core.http import encode_query
 from ..scraped import RawListing, RawOccurrence
-from .http import encode_query
 from .spec import FetchContext, RawPayload, SourceSpec
 
 SPEC = SourceSpec(

@@ -15,10 +15,10 @@ import datetime as dt
 from collections.abc import Iterator
 from typing import Any
 
+from ....core.http import encode_query
 from ..scraped import RawListing, RawOccurrence
 from . import jsonld
 from .dates import parse_iso_datetime
-from .http import encode_query
 from .spec import FetchContext, RawPayload, SourceSpec
 
 SPEC = SourceSpec(

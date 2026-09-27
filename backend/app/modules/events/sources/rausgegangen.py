@@ -31,10 +31,10 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from ....core.http import FetchError
 from ..scraped import RawListing, RawOccurrence
 from . import jsonld
 from .dates import parse_iso_datetime
-from .http import FetchError
 from .spec import FetchContext, RawPayload, SourceSpec
 
 SPEC = SourceSpec(

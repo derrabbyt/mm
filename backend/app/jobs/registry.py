@@ -9,7 +9,8 @@ import importlib
 from collections.abc import Callable
 
 JOBS: dict[str, str] = {
-    "scrape-events": "app.modules.events.jobs:scrape_events",
+    # Composed above the modules, because it needs two of them.
+    "scrape-events": "app.jobs.scrape_events:scrape_events",
     "ingest-geodata": "app.modules.geodata.jobs:ingest_geodata",
     "build-pois": "app.modules.poi.jobs:build_pois",
     "bake-matrices": "app.modules.matrix.jobs:bake_matrices",

@@ -1,17 +1,20 @@
-"""The HTTP client every Source fetches through.
+"""Fetching from somebody else's server, politely.
+
+Used by every Source a scrape reads and by the geocoder, which is why it sits
+here rather than inside either of them.
 
 Built on stdlib `urllib`, and that is a trap-avoidance choice rather than a
 minimalist one: `urllib3` 2.x percent-encodes `[` and `]` in query strings.
-events.at's filters are `state[]` / `event_type[]`, and when they arrive as
-`%5B%5D` the server answers **200 with the filters silently ignored** - a
-plausible-looking page containing the wrong data. Same parameter style on
-meinbezirk. `requests` sits on urllib3, so it is out; stdlib `urllib` passes the
-brackets through untouched and costs no dependency.
+events.at and meinbezirk take their filters as `state[]` / `event_type[]`, and
+when those arrive as `%5B%5D` the server answers **200 with the filters silently
+ignored** - a plausible-looking page containing the wrong data. `requests` sits
+on urllib3, so it is out; stdlib `urllib` passes the brackets through untouched
+and costs no dependency.
 
 Also handles politeness throttling (correct across threads), retry with backoff,
 and treating a throttle response as retryable rather than terminal. bandsintown
-answers `416`, songkick `406` and rausgegangen `403` when pushed too fast - all
-three look exactly like "no more results" if you do not know better.
+answers `416`, songkick `406` and rausgegangen `403` when pushed too fast, and
+all three look exactly like "no more results" if you do not know better.
 """
 
 import gzip
@@ -97,9 +100,9 @@ def _decompress(raw: bytes, encoding: str) -> bytes:
 class HttpClient:
     """Throttled, retrying HTTP getter.
 
-    One instance per Source per run, so `delay` is that Source's politeness
-    budget: rausgegangen's robots.txt asks for 10s, songkick needs ~8s, and most
-    are fine at 0.5s.
+    One instance per caller, so `delay` is that caller's politeness budget: one
+    site's robots.txt asks for 10s, another needs ~8s, most are fine at 0.5s, and
+    a geocoder on localhost needs none at all.
     """
 
     def __init__(
@@ -121,7 +124,7 @@ class HttpClient:
             "Accept-Encoding": "gzip, deflate",
             **(extra_headers or {}),
         }
-        # One Source stores its search result set server-side against the
+        # One scraped site holds its search results server-side against the
         # session, so paging only works if cookies are carried between requests.
         handlers = []
         if use_cookies:
@@ -130,7 +133,7 @@ class HttpClient:
         self._opener = urllib.request.build_opener(*handlers)
         self._lock = threading.Lock()
         self._next_allowed = 0.0
-        # Per-run counters, recorded against the run in `source_runs`.
+        # Per-run counters. A scrape records these against the run.
         self.request_count = 0
         self.bytes_fetched = 0
         self.status_counts: dict[int, int] = {}

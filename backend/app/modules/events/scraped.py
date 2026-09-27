@@ -45,7 +45,9 @@ Category = Literal[
 ]
 
 GeoSource = Literal["source", "geocoded", "none"]
-GeoPrecision = Literal["exact", "street", "city"]
+# How precisely a position was placed. `approx` covers both a match too vague to
+# name and one the address contradicted - see the geocoding module.
+GeoPrecision = Literal["exact", "street", "city", "approx"]
 
 VIENNA_TZ = "Europe/Vienna"
 

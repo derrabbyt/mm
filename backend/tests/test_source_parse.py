@@ -12,6 +12,7 @@ import pathlib
 
 import pytest
 
+from app.core.http import encode_query
 from app.modules.events.scraped import RawListing
 from app.modules.events.sources import (
     austria_info,
@@ -29,7 +30,6 @@ from app.modules.events.sources import (
     wien_info,
 )
 from app.modules.events.sources.dates import parse_iso_datetime
-from app.modules.events.sources.http import encode_query
 from app.modules.events.sources.spec import RawPayload
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -204,7 +204,7 @@ class TestEventsAt:
         )
 
     def test_the_url_builder_keeps_the_brackets_literal(self):
-        """%5B%5D returns 200 with the filters ignored - see sources/http.py."""
+        """%5B%5D returns 200 with the filters ignored - see core/http.py."""
         url = events_at._url(self.DAY, 1)
         assert "state[]=Wien" in url
         assert "event_type[]=konzert" in url

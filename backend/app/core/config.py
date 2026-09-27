@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     # wien.gv.at server-generates a ~490 KB index and takes ~32s to hand it over.
     scrape_timeout_seconds: float = 30.0
 
+    # The geocoder, which is the Photon that docker compose runs. Configuration
+    # rather than a constant, and with no public default: an address is somebody's
+    # whereabouts, and a misconfiguration that quietly sent thousands of them to a
+    # third party would look exactly like working software. Self-hosted, so the
+    # delay is zero and asking several questions per address is free.
+    geocoder_url: str = "http://127.0.0.1:2322/api"
+    geocoder_delay_seconds: float = 0.0
+    # Off turns the scrape into a pure scrape: addresses are still stored, so
+    # nothing has to be re-scraped when it goes back on.
+    geocoder_enabled: bool = True
+
     @property
     def supabase_issuer(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/auth/v1"

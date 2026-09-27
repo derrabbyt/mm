@@ -30,9 +30,9 @@ from collections.abc import Iterator
 
 from bs4 import BeautifulSoup
 
+from ....core.http import FetchError
 from ..scraped import RawListing, RawOccurrence
 from . import dates, markup
-from .http import FetchError
 from .spec import FetchContext, RawPayload, SourceSpec
 
 SPEC = SourceSpec(

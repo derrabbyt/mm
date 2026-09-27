@@ -24,8 +24,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol
 
+from ....core.http import HttpClient
 from ..scraped import RawListing
-from .http import HttpClient
 
 
 @dataclass(frozen=True)

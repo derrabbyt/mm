@@ -9,7 +9,7 @@ app/
 ├── api/main.py        the FastAPI shell — which modules are exposed over HTTP
 ├── jobs/              the scheduled-job runtime — runner, registry
 ├── modules/           the features, one folder each
-├── core/              config, logging, redis, exceptions, enums, contracts
+├── core/              config, logging, http, redis, exceptions, enums, contracts
 ├── db/                Base and session — imported by every module, imports none
 ├── metadata.py        every model, for Alembic — imports every module, imported by none
 └── data/              reference data and baked datasets
@@ -44,20 +44,19 @@ contract in `sources/spec.py`. They are discovered rather than listed, so adding
 a Source is adding a file. Nothing in there holds a session, and the boundary
 rules apply to it exactly as they do to the module's top level.
 
-What the adapters share sits beside them rather than at the module's top level,
-because only they use it: `sources/http.py` is the client every fetch goes
-through, `sources/dates.py` reads both the ISO timestamps the JSON Sources get
+What only the adapters use sits beside them rather than at the module's top
+level: `sources/dates.py` reads both the ISO timestamps the JSON Sources get
 subtly wrong and a German listing page's year-less dates, `sources/jsonld.py`
 walks the schema.org data three of them embed, and `sources/markup.py` finds the
 one picture that represents a happening. The last is named for what it reads
 because `html` is a stdlib module. A helper lands here when the Source that needs
-it does, not before.
+it does, not before - and moves to `core/` if a second module ever needs it,
+which is where the HTTP client went once the geocoder wanted one too.
 
-One consequence of scraping before geocoding: a Listing with no position cannot
-be found near a Rendezvous at all, because the read filters on distance. Most
-Sources publish no coordinates, so most of the catalogue is currently unservable
-— which is what the geocoding module is for, and why it is worth doing before
-more Sources rather than after.
+A Listing with no position cannot be found near a Rendezvous at all, because the
+read filters on distance, and most Sources publish no coordinates. Turning an
+address into a position is `geocoding`'s job, and it is reached as a capability
+rather than an import — see "A job that needs two modules" below.
 
 The layering inside a module is described in `auth-and-db-patterns.md`.
 
@@ -153,9 +152,10 @@ Which modules each router composes:
 | `events` | `accounts`, `meetups`, `rendezvous` |
 | `accounts`, `demo` | nothing |
 
-A module gets a `public.py` when something actually crosses into it; `events`,
-`demo`, `geocoding`, `geodata`, `poi` and `matrix` have no consumers yet and so
-have none.
+A module gets a `public.py` when something actually crosses into it - which
+includes the job runtime above them, and is why `events` and `geocoding` have one
+without either appearing in the table. `demo`, `geodata`, `poi` and `matrix` have
+no consumers at all and so have none.
 Every arrow above now leaves from a `router.py` - no service imports anything
 outside its own module.
 
@@ -256,6 +256,31 @@ It now lives at `app/metadata.py`, above the modules rather than beneath them.
 Nothing imports it except `migrations/env.py`, so it is free to know about
 everything.
 
+## A job that needs two modules
+
+A request that needs two modules composes them in `router.py`: it owns the
+session and passes values between them, so neither module has to know the other
+exists. A job has no router, and `jobs.py` is one of the layers forbidden from
+knowing — it holds a session. So a job that needs two modules composes *above*
+them, in `app/jobs/`:
+
+```python
+# app/jobs/scrape_events.py
+def scrape_events() -> None:
+    with SessionLocal() as db:
+        stats = events.scrape(db, locate=geocoding.locator(db))
+```
+
+`scrape-events` is the first of these. `events` owns the catalogue; `geocoding`
+owns the geocoder and its cache; the capability crosses as a `Locate`, the port
+declared in `core/contracts.py`. The events module ends up unable to reach
+geocoding even by accident, which is stronger than going through its `public.py`
+and is what the boundary rule was for.
+
+This is the same move as `app/metadata.py`, which sits above the modules so that
+it is allowed to know about all of them. A job owned by one module still lives in
+that module's `jobs.py`; only a job that has to compose comes up here.
+
 ## The URL tree lives in one place
 
 A rendezvous and the events near it are sub-resources of a meetup, so that is
@@ -296,14 +321,16 @@ scheduled task, a crontab line) running the same command — the application
 code does not change.
 
 Add a job in two steps: write the function in the owning module's `jobs.py`,
-then name it in `app/jobs/registry.py`. The registry stores import *strings*,
-not functions, so the runner only imports the module it was asked for — a
-scraper container never loads the 1.4 GB travel-time dataset.
+then name it in `app/jobs/registry.py`. A job that needs *two* modules is written
+in `app/jobs/` instead, for the reason given above. The registry stores import
+*strings*, not functions, so the runner only imports the module it was asked for
+— a scraper container never loads the 1.4 GB travel-time dataset.
 
 Jobs have no request to hang a session off, so they open their own:
 
 ```python
 from ...db.session import SessionLocal
+
 
 def scrape_events() -> None:
     with SessionLocal() as db:

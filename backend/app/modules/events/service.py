@@ -20,7 +20,8 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 
 from ...core.config import settings
-from ...core.contracts import Position
+from ...core.contracts import Address, Locate, Position
+from ...core.http import HttpClient
 from . import repository, sources
 from .models import Listing
 from .normalize import normalize
@@ -32,7 +33,6 @@ from .scraped import (
     Rejected,
     SourceRunStats,
 )
-from .sources.http import HttpClient
 from .sources.spec import FetchContext, Source
 
 logger = logging.getLogger(__name__)
@@ -159,8 +159,50 @@ def _collect(source: Source, ctx: FetchContext) -> tuple[list[RawListing], str |
     return listings, None
 
 
+def _positioned(listing: NormalizedListing, locate: Locate | None) -> NormalizedListing:
+    """The Listing with a position, if it needs one and its address allows it.
+
+    Most Sources publish no coordinates at all, and a Listing without them cannot
+    be found near a Rendezvous, because the read filters on distance. Geocoding
+    is reached as a capability passed in rather than as an import: this layer
+    holds the session, so it is not allowed to know the geocoding module exists.
+
+    A Listing that already carries a position keeps it. The Source saw the
+    happening; the geocoder is only guessing from words.
+    """
+    if locate is None or listing.lat is not None:
+        return listing
+
+    located = locate(
+        Address(
+            venue_name=listing.venue_name_raw,
+            street=listing.street,
+            postcode=listing.postcode,
+            city=listing.city,
+        )
+    )
+    if located is None:
+        return listing
+    return listing.model_copy(
+        update={
+            "lat": located.position.latitude,
+            "lon": located.position.longitude,
+            "geo_source": "geocoded",
+            # What the geocoder actually worked out, not a flat guess: a house
+            # number and a district are both "a position" and only one is worth
+            # much to a query about what is nearby.
+            "geo_precision": located.precision,
+        }
+    )
+
+
 def scrape_source(
-    db: Session, source: Source, *, run_id: str, today: date
+    db: Session,
+    source: Source,
+    *,
+    run_id: str,
+    today: date,
+    locate: Locate | None = None,
 ) -> SourceRunStats:
     """Fetch, parse, normalise and store one Source. Never raises for its own
     failures - they are recorded against the run instead."""
@@ -190,9 +232,13 @@ def scrape_source(
     # means the database, not the site, so it stops the run rather than being
     # recorded and stepped over.
     occurrences = 0
+    placed = 0
     for listing in storable:
-        repository.upsert_listing(db, listing, run_id)
-        occurrences += len(listing.occurrences)
+        positioned = _positioned(listing, locate)
+        if listing.lat is None and positioned.lat is not None:
+            placed += 1
+        repository.upsert_listing(db, positioned, run_id)
+        occurrences += len(positioned.occurrences)
 
     # Only a run that actually fetched something may conclude that what it did
     # not see is gone. Without the `storable` guard, a site answering 200 with
@@ -224,25 +270,33 @@ def scrape_source(
     repository.record_source_run(db, stats)
 
     logger.info(
-        "%s: parsed=%d stored=%d quarantined=%d occurrences=%d retired=%d %s",
+        "%s: parsed=%d stored=%d quarantined=%d occurrences=%d geocoded=%d "
+        "retired=%d %s",
         spec.name,
         stats.parsed_count,
         stats.valid_count,
         stats.quarantined_count,
         stats.occurrences_count,
+        placed,
         retired,
         "ok" if stats.fetched_ok else f"FAILED ({error})",
     )
     return stats
 
 
-def scrape(db: Session, *, today: date | None = None) -> list[SourceRunStats]:
+def scrape(
+    db: Session, *, today: date | None = None, locate: Locate | None = None
+) -> list[SourceRunStats]:
     """Scrape every Source, one after another.
 
     Sequential on purpose: twenty-one Sources at polite delays is still only
     minutes, it keeps the log readable, and it avoids being a burst of load on
     anyone. A Source that needs concurrency for detail pages does it inside its
     own `fetch`.
+
+    `locate` resolves an address to a position. Without one, a Listing whose
+    Source published no coordinates is stored anyway and simply cannot be found
+    near a Rendezvous - the address is kept, so a later run can still place it.
     """
     run_id = new_run_id()
     discovered = sources.discover()
@@ -252,6 +306,6 @@ def scrape(db: Session, *, today: date | None = None) -> list[SourceRunStats]:
     # normalisation accepts, are both local-calendar windows.
     today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
     return [
-        scrape_source(db, source, run_id=run_id, today=today)
+        scrape_source(db, source, run_id=run_id, today=today, locate=locate)
         for source in discovered.values()
     ]
