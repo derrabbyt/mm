@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 from ...core.config import settings
 from ...core.contracts import Address, Locate, Position
 from ...core.http import HttpClient
-from . import dedup, repository, sources
+from . import archive, dedup, repository, sources
 from .models import Event, Listing
 from .normalize import normalize
 from .schemas import EventRead
@@ -334,6 +334,9 @@ def _collect(source: Source, ctx: FetchContext) -> tuple[list[RawListing], str |
     listings: list[RawListing] = []
 
     for payload in payloads:
+        # Archived before it is parsed, deliberately. The payload worth keeping
+        # most is the one about to blow the parser up.
+        archive.store(payload, source=name)
         try:
             listings.extend(source.parse(payload))
         except Exception:
@@ -545,6 +548,15 @@ def scrape(
         # Vienna's calendar day. The window a Source is asked for, and the window
         # normalisation accepts, are both local-calendar windows.
         today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
+
+        # Before fetching, not after: this run is about to write a day's worth
+        # of payloads, and a run that fails part way through should still have
+        # made room for them. The scrape is the only thing that writes to the
+        # archive and it is the thing on a schedule, so expiring here is what
+        # keeps the archive bounded without a second scheduled job to forget.
+        archive.prune(
+            retention_days=settings.scrape_archive_retention_days, today=today
+        )
         stats = [
             scrape_source(db, source, run_id=run_id, today=today, locate=locate)
             for source in discovered.values()

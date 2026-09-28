@@ -52,6 +52,20 @@ class Settings(BaseSettings):
     # nothing would say so until a Source emptied itself.
     scrape_max_retired_share: float = Field(default=0.6, ge=0.0, le=1.0)
 
+    # Where every fetched payload is kept, and for how long. Evidence rather
+    # than data: a parser that starts producing nonsense is fixed against the
+    # document that broke it, and by the time anyone looks the site has moved
+    # on. Local disk on purpose - object storage is the eventual home.
+    #
+    # Retention is a deployment setting because the disk is. A payload is
+    # stored under a digest of itself, so an hourly run costs nothing for a page
+    # that did not change and one copy for one that did - a first run of all
+    # twenty-one Sources is on the order of 20 MB compressed and a day of
+    # re-runs adds only what actually moved. Whoever sized the volume is the one
+    # who knows how many days of that fit.
+    scrape_archive_dir: Path = BACKEND_DIR / "data" / "archive"
+    scrape_archive_retention_days: int = Field(default=14, ge=1)
+
     # The geocoder, which is the Photon that docker compose runs. Configuration
     # rather than a constant, and with no public default: an address is somebody's
     # whereabouts, and a misconfiguration that quietly sent thousands of them to a

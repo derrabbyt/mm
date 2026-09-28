@@ -33,7 +33,15 @@ That last one is a category, not a file: `normalize.py`, `dedup.py`,
 `categories.py`, `region.py`. Values in, values out, no session and no import
 outside `core` - so it is neither a service (it orchestrates nothing) nor a
 repository (it touches no storage). Put it at the top of the module that needs
-it. Logic that turns out to be shared gets a named file in `core/` instead, the
+it.
+
+"Touches no storage" means the database, which is what `repository.py` exists to
+own. `events/archive.py` is the exception that shows where the line actually
+falls: it writes fetched payloads to a directory, so it is not pure, but nothing
+it writes is state the application reads back - it is evidence for a person
+debugging a parser, thrown away on a schedule and reproducible by re-scraping.
+A file like that stays out of `repository.py`, because putting it there would
+hand a session-holding layer a job that needs no session. Logic that turns out to be shared gets a named file in `core/` instead, the
 way `contracts.py` and `enums.py` did; there is no `utils.py`, and adding one
 would recreate the dumping ground `core/` exists to avoid.
 

@@ -95,6 +95,12 @@ services:
         command: ["python", "-m", "app.jobs.runner", "scrape-events", "--every", "3600"]
         env_file: .env
         environment: *in_cluster
+        volumes:
+            # The payload archive outlives the container on purpose: it is the
+            # evidence for fixing a parser against the document that broke it,
+            # and a restart is exactly when somebody goes looking for it. The
+            # run expires it on its own schedule, so it stays bounded.
+            - scrape_archive:/srv/data/archive
         depends_on: *infra_ready
 
     ingest-geodata:
@@ -129,3 +135,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  scrape_archive:

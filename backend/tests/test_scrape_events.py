@@ -13,6 +13,11 @@ far as they have to be. What an operator observes of a job is its log, so a guar
 whose whole job is to refuse loudly is asserted on the log as well as on the
 response - and one of them *arranges* through the repository, because taking the
 run lock is the only way to put a run in progress without running one.
+
+The payload archive is the other exception, for the same kind of reason: what it
+keeps is never served, so no response can show whether a run archived anything,
+and "every payload a run fetches is archived" is a promise about the run rather
+than about the catalogue.
 """
 
 import uuid
@@ -26,6 +31,7 @@ from app.core.contracts import Address, Located, Position
 from app.core.enums import TravelMode
 from app.db.session import SessionLocal
 from app.jobs import scrape_events as job
+from app.modules.events import archive
 from app.modules.events import repository as catalogue
 from app.modules.events import sources as source_registry
 from app.modules.events.scraped import RawListing, RawOccurrence
@@ -172,6 +178,19 @@ async def _events(client, meetup, **params) -> list[dict]:
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+async def test_a_run_archives_what_it_fetched(meetup, meeting_at, run_scrape):
+    """Evidence for fixing a parser, which no response can show.
+
+    Asserted through the archive's own reader rather than off the filesystem:
+    what matters is that the payload comes back parseable, not where it landed.
+    """
+    run_scrape(StubSource(meeting_at + timedelta(minutes=30)))
+
+    kept = list(archive.payloads_for("stub"))
+
+    assert [one.url for one in kept] == ["stub://listing"]
 
 
 async def test_what_a_scrape_stored_is_served(client, meetup, meeting_at, run_scrape):

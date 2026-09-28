@@ -11,10 +11,24 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.api.main import app
+from app.core.config import settings
 from app.db.session import engine, get_db
 from app.modules.accounts.models import Account
 from app.modules.accounts.service import get_current_account
 from app.modules.meetups.models import Meetup
+
+
+@pytest.fixture(autouse=True)
+def archive_under_tmp(tmp_path, monkeypatch) -> None:
+    """No test writes into the real payload archive.
+
+    Autouse rather than opt-in: a scrape archives every payload it fetches, so
+    any test that runs the job would otherwise leave documents in the directory
+    a deployment keeps its evidence in.
+    """
+    monkeypatch.setattr(
+        settings, "scrape_archive_dir", tmp_path / "archive", raising=True
+    )
 
 
 class BrokenSession:

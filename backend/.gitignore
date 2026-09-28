@@ -64,3 +64,7 @@ app/data/output_dev/vienna_v2_h3r9/
 # Photon's OpenSearch index (1.3 GB), rebuilt by the container from the
 # Austria extract when missing.
 data/photon/
+
+# Archived scrape payloads: evidence for debugging a parser, expired on a
+# schedule by the scrape itself. Reproducible by re-running, and large.
+data/archive/
