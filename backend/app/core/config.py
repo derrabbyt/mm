@@ -28,6 +28,21 @@ class Settings(BaseSettings):
     database_url: str = ""
     redis_url: str = ""
 
+    # The scraping job connects as its own role, which owns the `content`
+    # schema and has no grant at all on the application's tables - so a bug in
+    # scraping cannot reach an account or a meetup. This is what ADR 0001 chose
+    # a separate schema for, and it is not delivered until the job uses it.
+    #
+    # The password has no default on purpose. Left unset, the migration still
+    # creates the role and its grants but leaves it unable to log in, and the
+    # job falls back to the application's connection saying loudly that it has -
+    # a deployment that has not been given the credential is better off scraping
+    # than silently not scraping, but it should not be able to think it is
+    # isolated when it is not.
+    scraper_postgres_user: str = "mm_scraper"
+    scraper_postgres_password: str = ""
+    scraper_database_url: str = ""
+
     supabase_url: str
     supabase_jwt_audience: str = "authenticated"
 
@@ -78,6 +93,17 @@ class Settings(BaseSettings):
     geocoder_enabled: bool = True
 
     @property
+    def scraper_configured(self) -> bool:
+        """Whether the job's connection is something other than the application's.
+
+        Asked of the assembled URL rather than of the password, because either
+        can configure it: a deployment that sets `SCRAPER_DATABASE_URL` outright
+        is as isolated as one that sets a password, and keying on the password
+        would have it warned at every run that it is not.
+        """
+        return self.scraper_database_url != self.database_url
+
+    @property
     def supabase_issuer(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/auth/v1"
 
@@ -95,14 +121,34 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _assemble_database_url(self) -> Self:
+    def _assemble_database_urls(self) -> Self:
+        """Both connections, in one place because the second derives from the
+        first - as two validators they would depend on declaration order to be
+        correct, which is not something to leave implicit.
+
+        The job's is its own role where a password is configured and the
+        application's where none is. Falling back to the application beats
+        falling back to a role that cannot log in; the job saying which it got
+        is what keeps the fallback from passing for the real thing. Same host,
+        port and database either way: this separates who connects, not what
+        they connect to, because a foreign key still has to cross from `public`
+        to `content`.
+        """
         if not self.database_url:
-            self.database_url = (
-                f"postgresql+psycopg2://{self.postgres_user}"
-                f":{quote_plus(self.postgres_password)}"
-                f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            self.database_url = self._dsn(self.postgres_user, self.postgres_password)
+        if not self.scraper_database_url:
+            self.scraper_database_url = (
+                self._dsn(self.scraper_postgres_user, self.scraper_postgres_password)
+                if self.scraper_postgres_password
+                else self.database_url
             )
         return self
+
+    def _dsn(self, user: str, password: str) -> str:
+        return (
+            f"postgresql+psycopg2://{user}:{quote_plus(password)}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
 
 settings = Settings()

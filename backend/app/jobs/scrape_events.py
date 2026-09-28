@@ -16,7 +16,7 @@ where it is.
 import logging
 
 from ..core.config import settings
-from ..db.session import SessionLocal
+from ..db.session import ScraperSessionLocal
 from ..modules.events import public as events
 from ..modules.geocoding import public as geocoding
 
@@ -31,12 +31,27 @@ def scrape_events() -> None:
     already in progress - one run at a time is a rule of the scrape rather than a
     failure of this one.
     """
+    if settings.scraper_configured:
+        logger.info("scrape-events: connecting as %s", settings.scraper_postgres_user)
+    else:
+        # Loud, because the difference is not visible in anything the run does:
+        # it scrapes exactly the same either way, and the only thing that
+        # changes is what it could damage if it went wrong.
+        logger.warning(
+            "scrape-events: no scraper role configured, so this run connects as "
+            "the application and can reach its tables - set "
+            "SCRAPER_POSTGRES_PASSWORD"
+        )
+
     # Two sessions on purpose. A scrape commits one Source at a time, so that
     # its Listings and the record of how it went land together; the geocode
     # cache is not part of that bargain. Sharing one session would commit
     # half-written Listings every time an address resolved, and would throw away
     # lookups already paid for if the Source that prompted them failed after.
-    with SessionLocal() as db, SessionLocal() as cache:
+    #
+    # Both are the scraping role's: the geocode cache lives in `content` too, so
+    # nothing a run does needs a connection that can write `public`.
+    with ScraperSessionLocal() as db, ScraperSessionLocal() as cache:
         outcome = events.scrape(
             db, locate=geocoding.locator(cache, enabled=settings.geocoder_enabled)
         )

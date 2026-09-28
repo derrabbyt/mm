@@ -366,6 +366,24 @@ sits inside `demo` rather than in `app/jobs/` - a module owning a process entry
 point is not where it belongs long-term, but it is the truth today, and the day
 something real enqueues it moves up.
 
+## Who connects as what
+
+The API and the RQ worker connect as the application's role. The `scrape-events`
+job does not: it connects as `mm_scraper`, which can write the `content` schema
+and has no grant at all on `public` - not even `SELECT`. A scrape has no reason
+to know who the users are, and a bug in it must not be able to reach them. The
+role and its grants come from a migration, and `alter default privileges` covers
+content tables added later, so nobody has to remember to grant them.
+
+That is the payoff ADR 0001 chose a separate schema for. It only holds while the
+geocode cache stays in `content` alongside the catalogue: put a table the job
+writes into `public` and the job needs a grant there, which is the whole
+arrangement undone.
+
+Where `SCRAPER_POSTGRES_PASSWORD` is unset the job falls back to the
+application's connection and logs a warning on every run, because a deployment
+should not be able to think it is isolated when it is not.
+
 ## What is still outside, and will not be
 
 Two producers live in their own repos today. Both are being folded in, and the

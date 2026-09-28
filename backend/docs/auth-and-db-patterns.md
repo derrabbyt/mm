@@ -196,3 +196,10 @@ uses — never construct a new engine or `Session()` directly; always take
 `db` as a parameter and pass it down, so one request uses one transaction
 end-to-end. A scheduled job has no request to hang off, so it opens its own:
 `with SessionLocal() as db:` (see `docs/architecture.md`).
+
+`scrape-events` is the exception, and opens `ScraperSessionLocal()` instead. It
+connects as a role that owns the `content` schema and has no grant on the
+application's tables, so a bug in scraping cannot reach an account or a meetup —
+see "Who connects as what" in `docs/architecture.md`. Anything that job touches
+has to live in `content`; put a table it writes in `public` and it needs a grant
+there, which undoes the arrangement.

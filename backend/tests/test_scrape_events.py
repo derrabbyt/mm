@@ -161,7 +161,9 @@ def run_scrape(db, monkeypatch):
             "discover",
             lambda: {source.SPEC.name: source for source in sources},
         )
-        monkeypatch.setattr(job, "SessionLocal", lambda: LentSession(db))
+        # The job connects as the scraping role; the test lends it the session
+        # its own transaction is rolled back with.
+        monkeypatch.setattr(job, "ScraperSessionLocal", lambda: LentSession(db))
         monkeypatch.setattr(
             job.geocoding,
             "locator",
