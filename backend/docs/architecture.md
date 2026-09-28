@@ -384,15 +384,28 @@ Where `SCRAPER_POSTGRES_PASSWORD` is unset the job falls back to the
 application's connection and logs a warning on every run, because a deployment
 should not be able to think it is isolated when it is not.
 
+## What came in from outside
+
+Two producers lived in their own repos. One is fully absorbed.
+
+**activity-loader is done.** The scrape is the `scrape-events` job here: all
+twenty-one Sources, the geocoder, the deduplication pass, the payload archive
+and the run guards, against tables this repo owns and migrates. A run fills
+`content.listings` and groups them into `content.events`, which is what the API
+serves; it takes an advisory lock, refuses to retire an implausible share of any
+one Source, and connects as a role that cannot reach the application's tables.
+The standalone deployment has nothing left to do — see
+`docs/adr/0005-the-catalogue-has-one-owner.md`, which also records what was
+dropped rather than carried, and why the export directory went.
+
 ## What is still outside, and will not be
 
-Two producers live in their own repos today. Both are being folded in, and the
-repo is meant to end up self-contained. The module they land in already exists,
-which is the point of having stubbed them:
+One producer still lives in its own repo. It is being folded in, and the repo is
+meant to end up self-contained. The module it lands in already exists, which is
+the point of having stubbed it:
 
 | today | becomes | when it lands |
 |---|---|---|
-| **activity-loader** — the payload archive and the scraper's own database role | the `scrape-events` job in `modules/events` | the tables, the scrape, the deduplication and **all twenty-one Sources** are here, with real models and real migrations: a run fills `content.listings` and then groups them into `content.events`, which is what the API serves. A run takes an advisory lock and refuses to retire an implausible share of any one Source, so it is safe to schedule. What is left is the archive and database-role work that lets the standalone scraper be switched off |
 | **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
 
 One thing in the codebase reads as permanent today and is not:
