@@ -815,6 +815,88 @@ class TestEventbrite:
         assert listings, "the filter must not remove everything"
 
 
+def goabase_detail(fixture: str) -> RawPayload:
+    """A detail payload as `fetch` builds it: the JSON-LD plus its list entry.
+
+    The list item rides on the meta so the detail can yield a complete Listing
+    rather than one missing everything only the list knows.
+    """
+    one = payload("goabase", fixture, "party")
+    party_id = (
+        json.loads(one.text)["@id"].partition("#")[0].rstrip("/").rsplit("/", 1)[-1]
+    )
+    listed = json.loads((FIXTURES / "goabase" / "partylist.json").read_text())
+    one.meta = {
+        "party": next(
+            item for item in listed["partylist"] if str(item["id"]) == party_id
+        )
+    }
+    return one
+
+
+class TestGoabaseDetail:
+    """The party list has no venue; the per-party JSON-LD does.
+
+    Without it every goabase Listing was unplaced: the feed's own coordinates
+    are a city centroid and are dropped, and the list carries no street, no
+    postcode and no venue name for the geocoder to work from.
+    """
+
+    def test_the_venue_and_street_are_read(self):
+        (one,) = goabase.parse(goabase_detail("party-jsonld.json"))
+
+        assert one.venue_name == "Flex Vienna"
+        assert one.street == "Augartenbrücke 1"
+        assert one.postcode == "1010"
+        assert one.city == "Wien"
+
+    def test_the_placeholder_venue_name_is_not_a_venue(self):
+        """Most of the feed names its venue "Party Place".
+
+        Storing that would geocode every one of them to whatever Photon makes
+        of the words, which is worse than leaving them unnamed.
+        """
+        (one,) = goabase.parse(goabase_detail("party-jsonld-placeholder.json"))
+
+        assert one.venue_name is None
+
+    def test_a_placeholder_name_does_not_cost_the_address(self):
+        """Six of the seventeen give a real street under that placeholder name.
+
+        Dropping the address with the name would leave them unplaceable for no
+        reason - the street is the part the geocoder actually needs.
+        """
+        node = json.loads(
+            (FIXTURES / "goabase" / "party-jsonld-placeholder.json").read_text()
+        )
+        node["location"]["address"]["streetAddress"] = "Donaukanal 1"
+
+        where = goabase._venue(node)
+
+        assert where["venue_name"] is None
+        assert where["street"] == "Donaukanal 1"
+
+    def test_the_centroid_coordinates_are_still_dropped(self):
+        """The detail repeats the same 48.2/16.4 pin the list gives."""
+        (one,) = goabase.parse(goabase_detail("party-jsonld.json"))
+
+        assert one.lat is None
+        assert one.lon is None
+
+    def test_the_published_price_is_kept(self):
+        (one,) = goabase.parse(goabase_detail("party-jsonld.json"))
+
+        assert one.price_min == 20
+        assert one.price_currency == "EUR"
+
+    def test_the_party_list_still_yields_its_listings(self):
+        """The list stays the source of the catalogue; the detail enriches it."""
+        assert (
+            len(list(goabase.parse(payload("goabase", "partylist.json", "partylist"))))
+            > 1
+        )
+
+
 class TestWienTicket:
     @pytest.fixture
     def listings(self) -> list[RawListing]:
@@ -955,6 +1037,51 @@ class TestEventjet:
 
     def test_the_source_ref_survives_a_slug_hosting_a_series(self, listings):
         assert listings[0].source_ref.startswith("trio-lepschi-")
+
+    def test_the_venue_is_read_out_of_the_markup(self):
+        """The JSON-LD has no `location` at all, but the page does.
+
+        Without this every eventjet Listing was unplaced, so none of them could
+        be found near a Rendezvous - the Source contributed rows and nothing a
+        person would see.
+        """
+        (one,) = eventjet.parse(
+            payload("eventjet", "detail-vienna-venue.html", "detail")
+        )
+
+        assert one.venue_name == "Kapuzinerkirche"
+        assert one.street == "Neuer Markt"
+        assert one.postcode == "1010"
+        assert one.city == "Wien"
+
+    def test_the_coordinates_are_read_from_a_misspelt_meta_tag(self):
+        """`event:location:longitued` - the site's own typo, on every page.
+
+        Reading only the correct spelling finds nothing, which is exactly how
+        this went unnoticed: the pages look like they publish no position.
+        """
+        (one,) = eventjet.parse(
+            payload("eventjet", "detail-vienna-venue.html", "detail")
+        )
+
+        assert one.lat == pytest.approx(48.206093)
+        assert one.lon == pytest.approx(16.370538)
+
+    def test_an_event_outside_vienna_is_dropped(self):
+        """The platform is Austria-wide, and coordinates are what reveal it.
+
+        With no position `region.is_vienna` keeps a Listing it knows nothing
+        about, so before the coordinates were read this Source was quietly
+        contributing Krems, Mödling and Frankfurt to a Vienna catalogue.
+        """
+        assert (
+            list(
+                eventjet.parse(
+                    payload("eventjet", "detail-out-of-region.html", "detail")
+                )
+            )
+            == []
+        )
 
     def test_a_listing_payload_yields_nothing(self):
         """The listing pages carry no event markup at all - that is the trap."""
@@ -1365,7 +1492,7 @@ PARSEABLE = [
     (eventbrite, "listing.html", "listing", {}),
     (wien_ticket, "show-mozart-vivaldi.html", "show", {}),
     (resident_advisor, "graphql.json", "graphql", {"page": 1}),
-    (eventjet, "detail-trio-lepschi.html", "detail", {}),
+    (eventjet, "detail-vienna-venue.html", "detail", {}),
     (bandsintown, "page.json", "page", {}),
     (fever, "plan-urzeit-chroniken.html", "plan", {"plan_id": "640141"}),
     (meinbezirk, "listing-2026-08-15.html", "listing", {"date": "2026-08-15"}),
