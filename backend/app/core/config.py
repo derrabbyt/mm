@@ -93,6 +93,17 @@ class Settings(BaseSettings):
     geocoder_enabled: bool = True
 
     @property
+    def app_database_url(self) -> str:
+        """The application's own database, whatever the current process points at.
+
+        The suite points `database_url` at a database of its own, so a test that
+        wants to know "is this the real one?" has to have something to compare
+        against. Assembled from the POSTGRES_* values, which the suite leaves
+        alone.
+        """
+        return self._dsn(self.postgres_user, self.postgres_password)
+
+    @property
     def scraper_configured(self) -> bool:
         """Whether the job's connection is something other than the application's.
 

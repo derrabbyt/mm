@@ -18,6 +18,15 @@ uv run fastapi dev app/api/main.py           # the API
 uv run python -m app.modules.demo.worker             # rq worker, for request-triggered work
 ```
 
+Tests run against a database of their own, `<POSTGRES_DB>_test`, which the suite
+creates and migrates on first run — so `uv run pytest` is the only command, and
+it never touches the data the app is serving. It refuses to start if pointed at
+the application's database. `TEST_DATABASE_URL` overrides where it connects.
+
+```bash
+uv run pytest
+```
+
 Scheduled jobs run one at a time and exit:
 
 ```bash
