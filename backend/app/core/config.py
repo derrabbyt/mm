@@ -46,7 +46,26 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_jwt_audience: str = "authenticated"
 
+    # The Dataset the rendezvous calculation reads, and the folder the bake
+    # publishes into. One directory, because publication is an atomic rename of
+    # the manifest inside it - see ADR 0006.
     dataset_dir: Path = BACKEND_DIR / "app" / "data" / "output_dev" / "vienna_v2_h3r9"
+
+    # What the bake routes over. Paths rather than anything it fetches: the
+    # geodata job is what puts an extract and a feed in shared storage, and the
+    # bake reads them from wherever it is told, so that job being unwritten does
+    # not stop this one running against a directory somebody filled by hand.
+    matrix_osm_path: Path = BACKEND_DIR / "data" / "geodata" / "vienna.osm.pbf"
+    matrix_gtfs_path: Path = BACKEND_DIR / "data" / "geodata" / "wl.zip"
+
+    # The share of cell pairs a transit matrix has to reach before the bake will
+    # publish it. A deployment setting because it is a property of the city and
+    # the ceiling, not of the code: Vienna's 90-minute transit matrices reach
+    # about 22% of pairs over a bbox that runs well past the network, while a
+    # Departure that found no timetable at all reaches 0%. The floor only has to
+    # separate those two, and sits low on purpose - it is there to catch a
+    # collapse, not to grade a city.
+    matrix_min_transit_coverage_pct: float = Field(default=10.0, ge=0.0, le=100.0)
 
     # How far ahead and behind a scrape asks each Source for. Deployment
     # settings, unlike a Source's rate limit or its locales - those are

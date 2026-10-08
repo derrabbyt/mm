@@ -8,11 +8,13 @@ environment said - and for a suite that writes Listings and runs the scrape job,
 that has to be a database of its own. See tests/test_isolation.py.
 """
 
+import hashlib
 import os
 import uuid
 from collections.abc import Generator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import fakeredis.aioredis
@@ -174,6 +176,120 @@ def archive_under_tmp(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(
         settings, "scrape_archive_dir", tmp_path / "archive", raising=True
     )
+
+
+@pytest.fixture
+def write_dataset(tmp_path):
+    """Write a tiny but complete baked Dataset, and hand back its folder.
+
+    Small enough to assert on - a handful of cells - and valid, so that a test
+    about one thing can break exactly that thing. `matrices` replaces the
+    arrays for the keys it names; everything else is a plausible matrix of its
+    own constant, which is what makes the Saturday and Sunday pair distinct by
+    default.
+
+    It assembles the manifest the way the bake does, through the bake's own
+    `describe_matrix` and the format's own `CONVENTIONS`, rather than by hand:
+    a fixture that reimplemented the writer could agree with a bug in it, or
+    drift away from a fix.
+
+    Here rather than in the test that needs it first because both the format
+    seam and the publication checks are about a Dataset on disk, and neither
+    should be writing one itself.
+    """
+    import h3
+    import numpy as np
+
+    from app.core import dataset as fmt
+    from app.modules.matrix.service import describe_matrix
+
+    def write(matrices=None, *, n_cells: int = 3, folder=None) -> Path:
+        folder = folder or tmp_path / "vienna_vtest_h3r9"
+        folder.mkdir(parents=True, exist_ok=True)
+        overrides = dict(matrices or {})
+
+        cells = [
+            fmt.GridCell(
+                id=index,
+                lat=48.20 + index * 0.01,
+                lon=16.37 + index * 0.01,
+                h3=h3.latlng_to_cell(48.20 + index * 0.01, 16.37 + index * 0.01, 9),
+            )
+            for index in range(n_cells)
+        ]
+        grid = fmt.Grid(
+            format_version=fmt.FORMAT_VERSION,
+            grid_version="vtest_h3r9",
+            grid_shape="hex",
+            bbox_wgs84=fmt.BoundingBox(south=48.1, north=48.3, west=16.2, east=16.6),
+            n_cells=n_cells,
+            h3_res=9,
+            cells=cells,
+        )
+        grid_json = grid.model_dump_json()
+        (folder / "grid.json").write_text(grid_json)
+
+        source = fmt.SourceFile(
+            path="data/geodata/vienna.osm.pbf",
+            sha256="0" * 64,
+            sha256_short="0" * 8,
+            size_bytes=1,
+        )
+        feed = source.model_copy(update={"sha256": "1" * 64})
+
+        entries = {}
+        for ordinal, key in enumerate(fmt.MATRIX_KEYS):
+            mode = fmt.mode_of(key)
+            transit = mode is fmt.MatrixMode.TRANSIT
+            matrix = overrides.pop(key, None)
+            if matrix is None:
+                matrix = np.full(
+                    (n_cells, n_cells), 60 * (ordinal + 1), dtype=np.uint16
+                )
+            np.save(folder / f"{key}.npy", matrix, allow_pickle=False)
+            entries[key] = describe_matrix(
+                file=f"{key}.npy",
+                inputs=fmt.BuildInputs(
+                    format_version=fmt.FORMAT_VERSION,
+                    profile_version=fmt.PROFILE_VERSION,
+                    engine="r5py",
+                    engine_version="1.1.7",
+                    grid_version="vtest_h3r9",
+                    mode=mode,
+                    max_seconds=fmt.MAX_SECONDS_PER_MODE[mode],
+                    snap_to_network=True,
+                    percentiles=fmt.PERCENTILES,
+                    osm_sha256=source.sha256,
+                    gtfs_sha256=feed.sha256 if transit else None,
+                    departure=datetime(2026, 6, 10, 8, tzinfo=UTC) if transit else None,
+                    departure_window_min=10 if transit else None,
+                ),
+                matrix=matrix,
+                timezone="Europe/Vienna",
+                wall_seconds=1.0,
+            )
+        if overrides:
+            raise AssertionError(f"not Dataset matrices: {sorted(overrides)}")
+
+        manifest = fmt.Manifest(
+            format_version=fmt.FORMAT_VERSION,
+            city="vienna",
+            grid_version="vtest_h3r9",
+            built_at=datetime(2026, 6, 15, tzinfo=UTC),
+            grid=fmt.ManifestGrid(
+                file="grid.json",
+                sha256=hashlib.sha256(grid_json.encode()).hexdigest(),
+                n_cells=n_cells,
+                grid_shape="hex",
+            ),
+            sources={"osm": source, "gtfs": feed},
+            matrix_conventions=fmt.CONVENTIONS,
+            matrices=entries,
+        )
+        (folder / "manifest.json").write_text(manifest.model_dump_json(indent=2))
+        return folder
+
+    return write
 
 
 class BrokenSession:
