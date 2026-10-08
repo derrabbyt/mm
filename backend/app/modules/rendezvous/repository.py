@@ -1,102 +1,48 @@
-"""This module's data: a baked travel-time dataset on disk, not a table.
+"""This module's data: a baked travel-time Dataset on disk, not a table.
 
-A folder of numpy matrices plus two metadata files, described in
-`app/data/ttm_backend_integration.md`. Only this file knows that format.
+The format is not described here. It is `core/dataset.py`, which the bake that
+writes a Dataset reads too - this file is one of its two users, and what is left
+of it is the reading: mapping the matrices, snapping a position to a cell, and
+turning a travel mode into the matrices a traveller on it may use.
 """
 
-import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import h3
 import numpy as np
 
+from ...core import dataset as dataset_format
 from ...core.config import settings
 from ...core.contracts import Position
 from ...core.enums import TravelMode
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_FORMAT_VERSION = 1
-UNREACHABLE = 65535
-FALLBACK_TIMEZONE = "Europe/Vienna"
-
-MINUTES_PER_DAY = 24 * 60
-
-# Departure hour -> matrix key, per class of day.
-#
-# The Saturday and Sunday matrices in the shipped dataset are byte-identical,
-# which is a defect in that bake, not a property of the city: the Saturday
-# departure was set to 2026-08-15, a public holiday, on which Wiener Linien runs
-# Sunday service. Its own feed defines 34 Saturday-only and 38 Sunday-only
-# service patterns and runs 15% more trips on a Saturday, so every Saturday
-# rendezvous is currently computed from Sunday timetables. The tables below are
-# right; the data behind two of them is not, until the next bake.
-WEEKDAY_TRANSIT_KEYS = {
-    8: "transit_wed08",
-    12: "transit_wed12",
-    18: "transit_wed18",
-    22: "transit_wed22",
-}
-SATURDAY_TRANSIT_KEYS = {10: "transit_sat10", 14: "transit_sat14", 20: "transit_sat20"}
-SUNDAY_TRANSIT_KEYS = {10: "transit_sun10", 14: "transit_sun14", 20: "transit_sun20"}
-
-# Modes served by a single, time-independent matrix.
-STATIC_MATRIX_KEYS = {
-    TravelMode.WALK: ("walk",),
-    TravelMode.BICYCLE: ("bike",),
-    TravelMode.CAR: ("car",),
-}
-
 
 class Dataset:
-    """One baked dataset folder, mmapped. Immutable after __init__."""
+    """One baked Dataset folder, mapped. Immutable after __init__."""
 
     def __init__(self, folder: Path):
-        self.folder = folder
-        self.manifest = json.loads((folder / "manifest.json").read_text())
-        self.grid = json.loads((folder / "grid.json").read_text())
-
-        # Refuse to serve rather than serve partially valid data.
-        if self.manifest["format_version"] != SUPPORTED_FORMAT_VERSION:
-            raise RuntimeError(
-                f"Unsupported format_version {self.manifest['format_version']}"
-            )
-        if self.grid["grid_version"] != self.manifest["grid_version"]:
-            raise RuntimeError("grid.json / manifest grid_version mismatch")
-
-        self.n_cells = self.grid["n_cells"]
-        if self.n_cells != self.manifest["grid"]["n_cells"]:
-            raise RuntimeError("grid.n_cells / manifest.grid.n_cells mismatch")
-
-        self.h3_res = self.grid["h3_res"]
-        self._h3_to_id = {cell["h3"]: cell["id"] for cell in self.grid["cells"]}
-        self._latlng = np.array(
-            [[cell["lat"], cell["lon"]] for cell in self.grid["cells"]]
+        self.metadata = dataset_format.load_metadata(folder)
+        self.matrices: dict[str, np.ndarray] = dataset_format.open_matrices(
+            folder, self.metadata.manifest
         )
 
-        self.matrices: dict[str, np.ndarray] = {}
-        self.max_seconds: dict[str, int] = {}
-        for key, entry in self.manifest["matrices"].items():
-            matrix = np.load(folder / entry["file"], mmap_mode="r")
-            if list(matrix.shape) != [self.n_cells, self.n_cells]:
-                raise RuntimeError(
-                    f"{key} shape {matrix.shape} != ({self.n_cells}, {self.n_cells})"
-                )
-            self.matrices[key] = matrix
-            self.max_seconds[key] = entry["max_seconds"]
-        self.timezone = ZoneInfo(
-            next(
-                (
-                    entry["timezone"]
-                    for entry in self.manifest["matrices"].values()
-                    if "timezone" in entry
-                ),
-                FALLBACK_TIMEZONE,
-            )
-        )
+        self.n_cells = self.metadata.n_cells
+        self.h3_res = self.metadata.h3_res
+        self.timezone = self.metadata.timezone
+
+        #: The ceiling each matrix was routed to - how far it can speak for.
+        self.cap_seconds = {
+            key: entry.cap_seconds
+            for key, entry in self.metadata.manifest.matrices.items()
+        }
+
+        cells = self.metadata.grid.cells
+        self._h3_to_id = {cell.h3: cell.id for cell in cells}
+        self._latlng = np.array([[cell.lat, cell.lon] for cell in cells])
 
     def snap(self, latitude: float, longitude: float) -> int:
         """Cell containing this coordinate, or -1 when it is off the grid."""
@@ -111,7 +57,7 @@ class Dataset:
 dataset = Dataset(settings.dataset_dir)
 logger.info(
     "Loaded travel-time dataset %s (%s cells, matrices: %s)",
-    dataset.manifest["grid_version"],
+    dataset.metadata.manifest.grid_version,
     dataset.n_cells,
     ", ".join(dataset.matrices),
 )
@@ -126,26 +72,8 @@ def to_local(when: datetime) -> datetime:
 
 
 def pick_transit_key(when: datetime) -> str:
-    """Matrix whose departure best matches `when`, in the dataset's timezone."""
-    local = to_local(when)
-
-    weekday = local.weekday()
-    if weekday == 5:
-        table = SATURDAY_TRANSIT_KEYS
-    elif weekday == 6:
-        table = SUNDAY_TRANSIT_KEYS
-    else:
-        table = WEEKDAY_TRANSIT_KEYS
-
-    # Distance around the clock, so 00:30 lands on the 22:00 bake rather than
-    # the 08:00 one. The day class stays whatever the meetup's own day says.
-    minutes = local.hour * 60 + local.minute
-
-    def distance(hour: int) -> int:
-        gap = abs(hour * 60 - minutes)
-        return min(gap, MINUTES_PER_DAY - gap)
-
-    return table[min(table, key=distance)]
+    """Matrix whose Departure best matches `when`, in the dataset's timezone."""
+    return dataset_format.pick_transit_key(to_local(when))
 
 
 def matrix_keys(mode: TravelMode, transit_key: str) -> tuple[str, ...]:
@@ -157,4 +85,4 @@ def matrix_keys(mode: TravelMode, transit_key: str) -> tuple[str, ...]:
     """
     if mode is TravelMode.TRANSIT:
         return ("walk", transit_key)
-    return STATIC_MATRIX_KEYS[mode]
+    return (dataset_format.STATIC_MATRIX_KEY[mode],)

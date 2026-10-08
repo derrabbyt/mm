@@ -11,6 +11,7 @@ from datetime import datetime
 import numpy as np
 
 from ...core.contracts import ParticipantInfo
+from ...core.dataset import UNREACHABLE
 from ...core.enums import TravelMode
 from ...core.exceptions import (
     NoPositionedParticipantsError,
@@ -18,7 +19,7 @@ from ...core.exceptions import (
     RendezvousInfeasibleError,
 )
 from . import repository
-from .repository import UNREACHABLE, dataset
+from .repository import dataset
 from .schemas import ParticipantTravelTime, RendezvousRead
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ def compute_rendezvous(
             if value == UNREACHABLE
         ]
         horizon = max(
-            dataset.max_seconds[key]
+            dataset.cap_seconds[key]
             for participant in stranded
             for key in repository.matrix_keys(participant.travel_mode, transit_key)
         )
