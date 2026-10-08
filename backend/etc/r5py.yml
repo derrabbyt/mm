@@ -1,0 +1,21 @@
+# The routing engine's configuration, read from /etc/r5py.yml while it is being
+# imported. It is here rather than on a command line because both settings have
+# to be in force before the engine starts a JVM, and because the job that uses
+# it takes no arguments of its own.
+#
+# r5-classpath: the engine resolves its class path at import time and downloads
+# a 64 MB jar if it cannot find one. Containers on this host cannot resolve
+# hostnames at all, so the jar is in the image and named here. It also puts the
+# jar outside the engine's cache directory, which deletes anything it holds
+# older than a fortnight - including, otherwise, the jar a weekly job depends
+# on, which it would then be unable to replace.
+#
+# max-memory: the engine otherwise sizes the JVM heap at 80% of total RAM, read
+# through psutil - which in a container is the *host's* RAM. Unpinned, the JVM
+# asks for a heap the cgroup will not give it and the job is killed. The Python
+# side of a full bake needs roughly 4 GB on top of this, so a container wants
+# about 10 GB in all.
+r5-classpath: /opt/r5/r5-v7.5.1-r5py-all.jar
+max-memory: 6G
+temporary-directory: /srv/tmp/r5py
+verbose: false

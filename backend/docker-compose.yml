@@ -52,13 +52,17 @@ services:
             retries: 30
             start_period: 60s
 
-    # Application containers. All four run the same image with a different
-    # command; none of them start by default, so `docker compose up` still
-    # brings up infrastructure only and `uv run fastapi dev` keeps working.
+    # Application containers. Five of the six run the same image with a
+    # different command; the bake has an image of its own, because a JVM is not
+    # something an API should be carrying. None of them start by default, so
+    # `docker compose up` still brings up infrastructure only and
+    # `uv run fastapi dev` keeps working.
     #   docker compose --profile app up      api + rq worker
     #   docker compose --profile jobs up     the scheduled jobs
     api:
-        build: .
+        build: &app_image
+            context: .
+            target: app
         profiles: ["app"]
         restart: unless-stopped
         env_file: .env
@@ -77,7 +81,7 @@ services:
                 condition: service_healthy
 
     worker:
-        build: .
+        build: *app_image
         profiles: ["app"]
         restart: unless-stopped
         command: ["python", "-m", "app.modules.demo.worker"]
@@ -89,7 +93,7 @@ services:
     # become CronJobs/scheduled tasks running the same command without the flag,
     # which is why the runner exits non-zero on failure.
     scrape-events:
-        build: .
+        build: *app_image
         profiles: ["jobs"]
         restart: unless-stopped
         command: ["python", "-m", "app.jobs.runner", "scrape-events", "--every", "3600"]
@@ -104,7 +108,7 @@ services:
         depends_on: *infra_ready
 
     ingest-geodata:
-        build: .
+        build: *app_image
         profiles: ["jobs"]
         restart: unless-stopped
         command: ["python", "-m", "app.jobs.runner", "ingest-geodata", "--every", "86400"]
@@ -113,7 +117,7 @@ services:
         depends_on: *infra_ready
 
     build-pois:
-        build: .
+        build: *app_image
         profiles: ["jobs"]
         restart: unless-stopped
         command: ["python", "-m", "app.jobs.runner", "build-pois", "--every", "86400"]
@@ -121,18 +125,42 @@ services:
         environment: *in_cluster
         depends_on: *infra_ready
 
+    # The one container with a Java runtime, and the one that needs a lot of
+    # memory: the Python side of a full bake wants about 4 GB on top of the
+    # 6 GB heap pinned in etc/r5py.yml. Build it with
+    # `docker compose build bake-matrices` once scripts/fetch-r5-jar.sh has put
+    # the engine's jar in vendor/.
     bake-matrices:
-        build: .
+        build:
+            context: .
+            target: matrix
         profiles: ["jobs"]
         restart: unless-stopped
         command: ["python", "-m", "app.jobs.runner", "bake-matrices", "--every", "604800"]
         env_file: .env
-        environment: *in_cluster
+        environment:
+            <<: *in_cluster
+            MATRIX_OSM_PATH: /srv/data/geodata/vienna.osm.pbf
+            MATRIX_GTFS_PATH: /srv/data/geodata/wl.zip
+            # The engine's cache: the parsed transport network, 450 MB of it,
+            # and the only thing here worth keeping between runs. The jar is not
+            # in it on purpose - the cache expires its contents after a
+            # fortnight, which on a weekly schedule is how a job deletes its own
+            # dependency.
+            XDG_CACHE_HOME: /srv/cache
         volumes:
+            # Read-write, and the same directory the API mounts read-only: a
+            # Dataset is published by renaming a manifest inside it, so there is
+            # no staging directory and no symlink. See ADR 0006.
             - ./app/data/output_dev:/srv/app/data/output_dev
+            # What it routes over. Read-only, because the bake fetches nothing
+            # and writes nothing here - the geodata job owns this directory.
+            - ./data/geodata:/srv/data/geodata:ro
+            - r5py_cache:/srv/cache
         depends_on: *infra_ready
 
 volumes:
   postgres_data:
   redis_data:
   scrape_archive:
+  r5py_cache:

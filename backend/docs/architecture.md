@@ -30,10 +30,10 @@ modules/meetups/
 ```
 
 That last one is a category, not a file: `normalize.py`, `dedup.py`,
-`categories.py`, `region.py`. Values in, values out, no session and no import
-outside `core` - so it is neither a service (it orchestrates nothing) nor a
-repository (it touches no storage). Put it at the top of the module that needs
-it.
+`categories.py`, `region.py`, `checks.py`, `feed.py`. Values in, values out, no
+session and no import outside `core` - so it is neither a service (it
+orchestrates nothing) nor a repository (it touches no storage). Put it at the
+top of the module that needs it.
 
 "Touches no storage" means the database, which is what `repository.py` exists to
 own. `events/archive.py` is the exception that shows where the line actually
@@ -249,6 +249,17 @@ An enum used by both a column and the shapes built from it has to sit at or
 below `core`, or `core` ends up importing from `modules`. That is
 `core/enums.py`, and `TravelMode` is its only resident.
 
+`core/dataset.py` is there for the same reason and is the bigger case: it is the
+baked Dataset's format, and `matrix` writes a Dataset while `rendezvous` reads
+one. Neither may import the other, so a fact both have to agree on - the
+sentinel, the per-mode ceilings, the Departure table, the shape of
+`manifest.json` - can only live below both. It used to live in both, and the two
+copies disagreeing is what let a re-run write a Dataset that stopped the API
+starting and a Saturday Departure land on a public holiday unnoticed. It is not
+`contracts.py`: that file is scoped to shapes one module hands another in
+process, and this is a file format. Prose around it is in
+`docs/dataset-format.md`.
+
 ## Nothing depends on anything that depends on it
 
 Both graphs are acyclic - file by file, and layer by layer - and
@@ -386,7 +397,8 @@ should not be able to think it is isolated when it is not.
 
 ## What came in from outside
 
-Two producers lived in their own repos. One is fully absorbed.
+Two producers lived in their own repos. Both are absorbed, and the repo is
+self-contained.
 
 **activity-loader is done.** The scrape is the `scrape-events` job here: all
 twenty-one Sources, the geocoder, the deduplication pass, the payload archive
@@ -398,44 +410,45 @@ The standalone deployment has nothing left to do — see
 `docs/adr/0005-the-catalogue-has-one-owner.md`, which also records what was
 dropped rather than carried, and why the export directory went.
 
-## What is still outside, and will not be
+**the ttm repo is done.** The r5py bake is the `bake-matrices` job in
+`modules/matrix`: it takes an OSM extract and a GTFS feed as paths, derives its
+Departures from the feed's own validity window, writes through the shared format
+definition and publishes by renaming the manifest into place. The Dataset format
+has stopped being a contract with an outside system and become one between
+`matrix` as writer and `rendezvous` as reader, both here - which is what
+`core/dataset.py` is. Two things that produced wrong answers rather than errors
+are now checks that fail the bake: transit coverage collapsing, and the Saturday
+matrices coming out identical to the Sunday ones. See ADR 0006 for how
+publication works and `docs/bake-matrices.md` for what an operator does with it.
 
-One producer still lives in its own repo. It is being folded in, and the repo is
-meant to end up self-contained. The module it lands in already exists, which is
-the point of having stubbed it:
-
-| today | becomes | when it lands |
-|---|---|---|
-| **the ttm repo** — runs the r5py bake, produces the dataset folders under `app/data/` | the `bake-matrices` job in `modules/matrix` | the dataset format stops being a contract with an outside system and becomes one between `matrix` (writer) and `rendezvous` (reader), both in this repo |
-
-One thing in the codebase reads as permanent today and is not:
-
-- `app/data/ttm_backend_integration.md` reads as an integration guide with an
-  external producer. It becomes an internal format note.
-
-One packaging consequence: `r5py` is currently a default dependency that nothing
-imports, and the obvious move is to drop it. After absorption the `matrix` job
-genuinely needs it, and a JDK with it - so the move is a matrix-specific
-dependency group, not a deletion, and only that image carries the weight.
+The bake is the one container that is not this image. It hosts a JVM for three
+hours and wants about ten gigabytes, which is a different runtime from a web
+API, so `Dockerfile` has a second target carrying the Java runtime, the routing
+engine's jar and the `matrix` dependency group. `r5py` was a default dependency
+that nothing imported; it is now in that group alone, and the other five
+containers carry none of it. The engine's class path and heap are pinned in
+`etc/r5py.yml`, in the image, because it resolves its class path while being
+imported and would otherwise download a 64 MB jar - and nothing in these
+containers can resolve a hostname.
 
 ## Deployment
 
-One image (`Dockerfile`), one command per role:
+Two image targets in one `Dockerfile`, one command per role:
 
 ```
-                          mm-backend
-                               │
-        ┌──────────────────────┴──────────────────────┐
-        ▼                                             ▼
-  long-running                              background jobs
-  ────────────                              ───────────────
-  api      fastapi run app/api/main.py      scrape-events    hourly
-  worker   -m app.modules.demo.worker       ingest-geodata   daily
-                                            build-pois       daily
-                                            bake-matrices    weekly
+                   mm-backend (--target app)          (--target matrix)
+                               │                              │
+        ┌──────────────────────┴───────────┐                  │
+        ▼                                  ▼                  ▼
+  long-running                     background jobs       the bake
+  ────────────                     ───────────────       ────────
+  api      fastapi run …           scrape-events  hourly  bake-matrices  weekly
+  worker   -m app.modules.demo.worker
+                                   ingest-geodata daily   + a JVM, the routing
+                                   build-pois     daily     engine and its jar
 
-                                            python -m app.jobs.runner <name>
-                                            one run, then exit
+                                   python -m app.jobs.runner <name>
+                                   one run, then exit
 ```
 
 All six are siblings. Nothing here starts, calls or queues work for anything

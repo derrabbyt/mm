@@ -83,11 +83,11 @@ dependencies = [
     { name = "fastapi-redis-sdk" },
     { name = "h3" },
     { name = "lxml" },
+    { name = "numpy" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt", extra = ["crypto"] },
-    { name = "r5py" },
     { name = "redis" },
     { name = "rq" },
     { name = "ruff" },
@@ -101,6 +101,10 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
+matrix = [
+    { name = "geopandas" },
+    { name = "r5py" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -110,11 +114,11 @@ requires-dist = [
     { name = "fastapi-redis-sdk", specifier = ">=0.7.0" },
     { name = "h3", specifier = ">=4.5.0" },
     { name = "lxml", specifier = ">=5.0" },
+    { name = "numpy", specifier = ">=2.5.1" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "pydantic-settings", specifier = ">=2.14.2" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.13.0" },
-    { name = "r5py", specifier = ">=1.1.7" },
     { name = "redis", specifier = ">=7.2.2" },
     { name = "rq", specifier = ">=2.10.0" },
     { name = "ruff", specifier = ">=0.16.0" },
@@ -127,6 +131,10 @@ dev = [
     { name = "fakeredis", specifier = ">=2.26.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
+]
+matrix = [
+    { name = "geopandas", specifier = ">=1.1.4" },
+    { name = "r5py", specifier = ">=1.1.7" },
 ]
 
 [[package]]

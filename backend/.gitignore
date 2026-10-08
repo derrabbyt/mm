@@ -68,3 +68,10 @@ data/photon/
 # Archived scrape payloads: evidence for debugging a parser, expired on a
 # schedule by the scrape itself. Reproducible by re-running, and large.
 data/archive/
+# The routing engine's jar: 64 MB, in the matrix image rather than in git.
+# scripts/fetch-r5-jar.sh puts it here.
+vendor/
+
+# The OSM extract and the transit feed the bake routes over: the geodata job's
+# output, hundreds of megabytes, and reproducible from upstream.
+data/geodata/
