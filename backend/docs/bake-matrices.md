@@ -151,7 +151,20 @@ matrices are never the truth about a city — is tested on its own, against a
 Dataset built to have them.
 
 The fix is in the date handling, so it reaches users through **one operator
-action, once**:
+action, once**. `scripts/rebuild-matrices.sh` walks it:
+
+```bash
+./scripts/rebuild-matrices.sh
+```
+
+It places the extract and the feed, shows the current Saturday/Sunday verdict
+and the Departures the feed will now produce *before* spending three hours,
+runs the bake while reading peak memory off the kernel's own high-water mark,
+checks what was published, prompts for the API restart that actually carries
+the fix, appends the run to `bake-runs.md`, and offers to reclaim the
+superseded matrices. The same script is the procedure for an ordinary rebuild,
+since a new annual feed lands about every December and the Departures move with
+it. By hand it is:
 
 1. Put the extract and the feed where `MATRIX_OSM_PATH` and `MATRIX_GTFS_PATH`
    point.
