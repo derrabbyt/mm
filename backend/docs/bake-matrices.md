@@ -57,10 +57,10 @@ what has not:
 
 - The class path is pinned by `etc/r5py.yml`: the engine resolves to the named
   jar instead of looking for one.
-- The heap *mechanism* works: against a config saying `2G` the engine reported a
-  2.0 GiB heap, where unpinned it sized itself at 11.9 GiB — 80% of this host's
-  RAM, and it would read the *host's* RAM inside a container too. The value the
-  image actually ships, `6G`, has not been exercised; only the knob has.
+- The heap is pinned to the value the image ships: against `etc/r5py.yml`'s
+  `max-memory: 6G` the engine reported a 6.0 GiB heap, and against `2G` it
+  reported 2.0 GiB, where unpinned it sized itself at 11.9 GiB — 80% of this
+  host's RAM, and it would read the *host's* RAM inside a container too.
 - The engine imports with no name resolution at all (`unshare -rn`), with the
   class path pinned. `socket.gethostbyname` raises; `import r5py` does not.
 - The jar lives at `/opt/r5/`, outside the engine's cache directory, so the
