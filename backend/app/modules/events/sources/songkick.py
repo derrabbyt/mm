@@ -1,16 +1,3 @@
-"""songkick - live music, with a native date filter and full geo.
-
-Date filtering works via `filters[minDate]` / `filters[maxDate]`, which take
-**US `MM/DD/YYYY`** - an ISO date is silently ignored. 50 JSON-LD `MusicEvent`
-blocks per page, each with a `PostalAddress` and `GeoCoordinates`, so these
-Listings need no geocoding.
-
-**Rate limiting looks like an unsupported parameter.** Rapid requests answer
-`406`, which reads as "this filter isn't supported"; at ~8s spacing every request
-succeeded. Hence the unusually large delay, on top of the shared client's retry
-with backoff.
-"""
-
 import datetime as dt
 from collections.abc import Iterator
 
@@ -32,7 +19,6 @@ SPEC = SourceSpec(
 )
 
 BASE = "https://www.songkick.com"
-# Vienna metro area id, from the site's own URL.
 METRO = "26771-austria-vienna"
 MAX_PAGES = 8
 
@@ -58,7 +44,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
 
 
 def _count_results(html: str) -> int:
-    """Named as eventfinder's is, for the same "was this page full?" job."""
     return len(jsonld.events_in(html))
 
 
@@ -69,7 +54,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         url = (node.get("url") or "").split("?")[0]
         if not url:
             continue
-        # .../id/43198223-kultursommer-wien -> the numeric id is stable.
         tail = url.rstrip("/").rsplit("/", 1)[-1]
         source_ref = tail.split("-", 1)[0] if tail[:1].isdigit() else tail
         if not source_ref or source_ref in seen:
@@ -77,7 +61,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
         start: dt.datetime | dt.date | None = parse_iso_datetime(node.get("startDate"))
         if start is None:
-            # A date with no time at all is still usable; it means all-day.
             try:
                 start = dt.date.fromisoformat(str(node.get("startDate"))[:10])
             except ValueError:
@@ -87,9 +70,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         where = jsonld.place(node)
         latitude, longitude = jsonld.coordinates(node)
 
-        # Protocol-relative in the markup; normalize prefixes the scheme. Usually
-        # the headline artist's photo rather than event artwork - for a gig
-        # listing that is the picture the site itself shows.
         image = jsonld.image(node)
 
         artists = [
@@ -113,7 +93,5 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             lat=latitude,
             lon=longitude,
             image_url=image,
-            # Everything here is live music by definition; the site has no
-            # per-event category of its own.
             categories_raw=["Konzert"],
         )

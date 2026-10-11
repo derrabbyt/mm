@@ -1,23 +1,3 @@
-"""ohschonhell - a community-submitted electronic music calendar.
-
-Fully client-rendered; the endpoints live in
-`/wp-content/themes/event4/js/event.js`. WordPress's own `/wp-json/` is
-disabled.
-
-**`osh_page` is mandatory.** Omit it and the `.at` domain serves **Hamburg**
-data - the backend is shared across ohschonhell.de's city subdomains. Cities
-seen: `wien`, `hamburg`, `berlin`, `koeln`, `stuttgart`, `capetown`,
-`rheinmain`.
-
-Returns a whole month at a time (`months[].month_days[].events[]`), so the
-requested window is left to normalisation.
-
-Coverage is thin and near-term: July 99 events, August 17, September 0 at the
-time of research. **Empty days are genuine**, not breakage - which is why a
-run's per-Source statistics are the right place to notice a Source going quiet,
-rather than a fixed threshold here.
-"""
-
 import datetime as dt
 import json
 import re
@@ -48,7 +28,6 @@ CITY = "wien"
 
 
 def months_in(date_from: dt.date, date_to: dt.date) -> list[str]:
-    """Every `YYYY-MM` the window touches, because a request takes a month."""
     found: list[str] = []
     year, month = date_from.year, date_from.month
     while (year, month) <= (date_to.year, date_to.month):
@@ -72,11 +51,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
 
 
 def _lineup(value: Any) -> str | None:
-    """Flatten the `lineup` blob, which is HTML: SoundCloud embeds, <br> lists.
-
-    Truncated, because it can run to whole press releases and it is being
-    stored as a description rather than as a line-up.
-    """
     if not value:
         return None
     text = BeautifulSoup(str(value), "lxml").get_text(" ", strip=True)
@@ -88,7 +62,6 @@ def _coordinate(value: Any) -> float | None:
         number = float(value)
     except (TypeError, ValueError):
         return None
-    # The feed writes 0 for "not placed", and (0, 0) is in the Gulf of Guinea.
     return number if number else None
 
 
@@ -96,8 +69,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
     data = json.loads(payload.text)
     seen: set[str] = set()
 
-    # `days` (the initial view) and `months` can both be present, and an event
-    # appears in each, so both are walked and the result deduplicated.
     buckets: list[dict] = list(data.get("days") or [])
     for month in data.get("months") or []:
         buckets.extend(month.get("month_days") or [])
@@ -124,8 +95,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
                 description=_lineup(item.get("lineup")),
                 lang="de",
                 venue_name=item.get("location_name"),
-                # location_city is free text: Vienna / Wien / VIENNA, or a
-                # district name.
                 city=item.get("location_city") or "Wien",
                 country="AT",
                 lat=_coordinate(item.get("event_latitude")),

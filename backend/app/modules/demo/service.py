@@ -1,8 +1,3 @@
-"""The work the demo router enqueues.
-
-Not `jobs.py`: that name is for scheduled work run by `app/jobs/runner.py`.
-"""
-
 import logging
 import time
 
@@ -12,7 +7,6 @@ logger = logging.getLogger(__name__)
 def expensive_job(item_id: int) -> dict:
     logger.debug("Worker started job for %s", item_id)
 
-    # Simulate expensive work.
     time.sleep(8)
 
     result = {

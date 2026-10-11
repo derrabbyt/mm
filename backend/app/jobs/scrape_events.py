@@ -1,18 +1,3 @@
-"""The scrape, composed.
-
-Two modules meet here and nowhere else. `events` owns the catalogue and knows how
-to fill it; `geocoding` owns the geocoder and its cache. Neither may import the
-other: both do their work in layers that hold a session, and the rule those
-layers live under is that they do not know other modules exist. So the wiring
-happens above them, which is what a `router.py` does for a request and what this
-file does for a job.
-
-It sits in `app/jobs/` rather than in `events/jobs.py` for exactly that reason -
-`jobs.py` is one of the session-holding layers. Above the modules is the only
-place allowed to know about both, the same reasoning that puts `app/metadata.py`
-where it is.
-"""
-
 import logging
 
 from ..core.config import settings
@@ -24,19 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def scrape_events() -> None:
-    """Scrape every Source into the catalogue, placing what it can.
-
-    Raises when a Source could not be fetched, so the runner exits non-zero and a
-    scheduler can tell. Returns cleanly, having done nothing, when another run is
-    already in progress - one run at a time is a rule of the scrape rather than a
-    failure of this one.
-    """
     if settings.scraper_configured:
         logger.info("scrape-events: connecting as %s", settings.scraper_postgres_user)
     else:
-        # Loud, because the difference is not visible in anything the run does:
-        # it scrapes exactly the same either way, and the only thing that
-        # changes is what it could damage if it went wrong.
         logger.warning(
             "scrape-events: no scraper role configured, so this run connects as "
             "the application and can reach its tables - set "
@@ -57,10 +32,6 @@ def scrape_events() -> None:
         )
 
     if outcome.declined:
-        # Nothing was scraped, and that is not a failure: the catalogue is being
-        # refreshed by whichever run got there first. Returning cleanly is what
-        # stops a scheduler firing on top of a long run from reading as broken
-        # software - loudly enough that an operator can still tell the two apart.
         logger.warning("scrape-events: %s, so this run did nothing", outcome.declined)
         return
 

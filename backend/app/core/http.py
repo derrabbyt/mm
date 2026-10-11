@@ -1,22 +1,3 @@
-"""Fetching from somebody else's server, politely.
-
-Used by every Source a scrape reads and by the geocoder, which is why it sits
-here rather than inside either of them.
-
-Built on stdlib `urllib`, and that is a trap-avoidance choice rather than a
-minimalist one: `urllib3` 2.x percent-encodes `[` and `]` in query strings.
-events.at and meinbezirk take their filters as `state[]` / `event_type[]`, and
-when those arrive as `%5B%5D` the server answers **200 with the filters silently
-ignored** - a plausible-looking page containing the wrong data. `requests` sits
-on urllib3, so it is out; stdlib `urllib` passes the brackets through untouched
-and costs no dependency.
-
-Also handles politeness throttling (correct across threads), retry with backoff,
-and treating a throttle response as retryable rather than terminal. bandsintown
-answers `416`, songkick `406` and rausgegangen `403` when pushed too fast, and
-all three look exactly like "no more results" if you do not know better.
-"""
-
 import gzip
 import http.cookiejar as http_cookiejar
 import json
@@ -37,7 +18,6 @@ DEFAULT_UA = (
     "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 )
 
-# Status codes that mean "slow down", not "stop". Retried with backoff.
 THROTTLE_STATUS = {403, 406, 408, 416, 425, 429, 500, 502, 503, 504}
 
 
@@ -69,13 +49,6 @@ class Response:
 
 
 def encode_query(params: list[tuple[str, str]]) -> str:
-    """Encode a query string, leaving `[]` in *keys* literal.
-
-    `urlencode` would produce `%5B%5D`, which silently disables the filters
-    on events.at and MeinBezirk. Values are still properly percent-encoded -
-    that part matters too: `state[]=Niederösterreich` sent as raw UTF-8
-    returns zero results, while the encoded form works.
-    """
     return "&".join(
         f"{key}={urllib.parse.quote(str(value), safe='')}" for key, value in params
     )
@@ -98,13 +71,6 @@ def _decompress(raw: bytes, encoding: str) -> bytes:
 
 
 class HttpClient:
-    """Throttled, retrying HTTP getter.
-
-    One instance per caller, so `delay` is that caller's politeness budget: one
-    site's robots.txt asks for 10s, another needs ~8s, most are fine at 0.5s, and
-    a geocoder on localhost needs none at all.
-    """
-
     def __init__(
         self,
         delay: float = 0.5,
@@ -133,13 +99,11 @@ class HttpClient:
         self._opener = urllib.request.build_opener(*handlers)
         self._lock = threading.Lock()
         self._next_allowed = 0.0
-        # Per-run counters. A scrape records these against the run.
         self.request_count = 0
         self.bytes_fetched = 0
         self.status_counts: dict[int, int] = {}
 
     def _wait_turn(self) -> None:
-        """Space requests by at least `delay`, correctly across threads."""
         if self.delay <= 0:
             return
         with self._lock:
@@ -187,7 +151,6 @@ class HttpClient:
                     )
                 last_error = FetchError(f"HTTP {exc.code} for {url}")
                 if exc.code not in THROTTLE_STATUS:
-                    # A real 404/410 will not improve on retry.
                     break
                 backoff = 2.0 * (attempt + 1) ** 2
                 logger.warning(

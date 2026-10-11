@@ -17,20 +17,11 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-# revision identifiers, used by Alembic.
 revision: str = "b8e9bf5867be"
 down_revision: str | Sequence[str] | None = "bc71d3e55958"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# Everything the activity-loader scraper created in `public`, dropped wholesale.
-# Five of them come back under their proper names in `content`; the other five go
-# for good - the venue review workflow, the alerting state and the scraper's own
-# schema-version marker are all out of scope, and `cards` is superseded by the
-# Events table that the deduplication work will add.
-#
-# CASCADE because several of them carry foreign keys to `events`, and IF EXISTS
-# because a fresh database has never had any of them.
 FOREIGN_TABLES = (
     "cards",
     "dedup_members",
@@ -46,7 +37,6 @@ FOREIGN_TABLES = (
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
     op.execute("DROP TABLE IF EXISTS " + ", ".join(FOREIGN_TABLES) + " CASCADE")
     op.execute("CREATE SCHEMA IF NOT EXISTS content")
 
@@ -309,11 +299,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Downgrade schema.
-
-    The `content` schema goes; the tables this migration dropped do not come
-    back. They were another project's, created by its own DDL on every connect
-    rather than by a migration, and held nothing that is not regenerable by
-    re-scraping - so recreating them empty would restore a shape, not data.
-    """
     op.execute("DROP SCHEMA IF EXISTS content CASCADE")

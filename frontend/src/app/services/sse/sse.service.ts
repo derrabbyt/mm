@@ -28,7 +28,6 @@ export class SSEService {
         subscriber.error(error);
       };
 
-      // Called when Angular/RxJS unsubscribes.
       return () => {
         source.close();
       };

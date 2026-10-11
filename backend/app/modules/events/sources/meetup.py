@@ -1,23 +1,3 @@
-"""meetup - community, tech and language meetups.
-
-    GET https://www.meetup.com/find/at--vienna/
-
-The page embeds JSON-LD `Event` objects (~49 upcoming). The URL's date
-parameters (`customStartDate`, `customEndDate`, `dateRange=custom`) are
-**silently ignored** - identical results and an identical date span with and
-without them - so the window is left to normalisation.
-
-`streetAddress` is loosely formatted ("Operngasse 7, Vienna") and there are no
-coordinates, so these Listings need geocoding before they can be placed.
-Meetup's GraphQL API would be better structured but requires OAuth.
-
-**No `image_url`, deliberately.** The JSON-LD `image` is populated, but every
-single value across the corpus is one of five
-`/images/fallbacks/redesign/group-cover-N-square.webp` placeholders. Storing
-those would render the same five stock pictures across every meetup while
-looking like real data.
-"""
-
 import re
 from collections.abc import Iterator
 
@@ -55,18 +35,6 @@ _TRAILING_CITY = re.compile(
 def _split_address(
     raw: str | None, locality: str | None
 ) -> tuple[str | None, str | None, str | None]:
-    """Split Meetup's free-text street field into (street, postcode, city).
-
-    Observed shapes, all arriving in the one field:
-
-        "Operngasse 7, Vienna"
-        "Währinger Gürtel 1, 1180 Vienna"
-        "Alser Strasse 4, 1080"
-        "Herrmannpark, Obere Weißgerberstraße, 1030 Wien, Wien"
-
-    Leaving the city or the postcode inside the street makes geocoding worse,
-    and duplicates what the Listing already holds in its own columns.
-    """
     if not raw:
         return None, None, locality
     parts = [part.strip() for part in str(raw).split(",") if part.strip()]
@@ -79,7 +47,6 @@ def _split_address(
                 postcode = found.group(1)
             parts.pop()
             continue
-        # A trailing "1030 Wien" segment: keep the postcode, drop the rest.
         if found and _TRAILING_CITY.match(_POSTCODE.sub("", parts[-1]).strip()):
             postcode = found.group(1)
             parts.pop()
@@ -100,7 +67,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         url = (node.get("url") or "").split("?")[0]
         if not url:
             continue
-        # /<group-slug>/events/<numeric-id>/ - the id is the stable key.
         tail = url.rstrip("/").rsplit("/", 1)[-1]
         source_ref = tail if tail.isdigit() else url.rstrip("/")
         if source_ref in seen:
@@ -128,7 +94,5 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             postcode=postcode,
             city=city or "Wien",
             country="AT",
-            # Meetup publishes no per-event taxonomy in the markup; these are
-            # community gatherings, closest to a talk or a workshop.
             categories_raw=["Meetup", "Workshop"],
         )

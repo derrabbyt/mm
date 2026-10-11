@@ -22,14 +22,6 @@ import type { Feature, Polygon } from 'geojson';
 
 const EARTH_RADIUS_METERS = 6_371_008.8;
 
-/**
- * A circle of `radiusMeters` around `center`, as a polygon so it stays the
- * right size on the ground at every zoom - a `circle` layer would be sized in
- * screen pixels instead.
- *
- * The offsets are flat-earth rather than great-circle, which is off by
- * centimetres at the kilometre scale this draws and keeps the maths readable.
- */
 function circle(center: Position, radiusMeters: number, steps = 64): Feature<Polygon> {
   const degreesLat = (radiusMeters / EARTH_RADIUS_METERS) * (180 / Math.PI);
   const degreesLon = degreesLat / Math.cos((center.latitude * Math.PI) / 180);
@@ -69,7 +61,6 @@ export class Meetup {
   readonly events = this.meetups.events;
   readonly eventRadiusMeters = this.meetups.eventRadiusMeters;
 
-  /** The area the events were searched in, drawn around the rendezvous point. */
   readonly searchArea = computed(() => {
     const spot = this.rendezvous();
     return spot ? circle(spot.position, this.eventRadiusMeters) : null;
@@ -82,17 +73,14 @@ export class Meetup {
     return spot ? Math.round(spot.worst_seconds / 60) : null;
   });
 
-  /** Distinct from the participant markers - green when placed, blue when selected. */
   readonly rendezvousColor = '#8e4ec6';
 
-  /** Smaller and duller than the pins, so a crowd of them stays readable. */
   readonly eventColor = '#f76b15';
 
   readonly mapStyle = 'https://tiles.openfreemap.org/styles/liberty';
   readonly center: [number, number] = [16.3738, 48.2082];
   readonly zoom: [number] = [12];
 
-  /** Address results are ranked by distance from here. */
   readonly searchNear: Position = { latitude: this.center[1], longitude: this.center[0] };
 
   constructor() {
@@ -120,8 +108,6 @@ export class Meetup {
     this.meetups.setParticipantPosition(location.id, location.position, location.label);
   }
 
-  /** Event images are hotlinked from the sources' own servers, so some are
-   *  already dead or refuse us; drop those instead of showing a broken icon. */
   hideBrokenImage(event: globalThis.Event) {
     (event.target as HTMLImageElement).remove();
   }

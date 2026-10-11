@@ -70,8 +70,6 @@
 
   @for (event of events(); track event.id) {
     <mgl-marker [lngLat]="[event.position.longitude, event.position.latitude]">
-      <!-- Projected content replaces the default pin; `title` is the browser's
-           own hover tooltip, so there is no popup to wire up. -->
       <div
         class="h-3 w-3 rounded-full border border-white"
         [style.background]="eventColor"
@@ -141,9 +139,6 @@
       @for (event of events(); track event.id) {
         <li class="flex gap-3 rounded border border-gray-300 p-3">
           @if (event.image_url) {
-            <!-- Hotlinked from the source, so `alt` stays empty (the title is
-                 right there) and a dead URL hides itself rather than leaving a
-                 broken-image icon. -->
             <img
               class="h-20 w-28 shrink-0 rounded object-cover"
               [src]="event.image_url"
@@ -171,7 +166,6 @@
 
             <p class="text-sm text-gray-600">
               {{ event.starts_at | date: 'EEE d MMM y' }}
-              <!-- All-day events carry a midnight start that means nothing. -->
               @if (!event.all_day) {
                 — {{ event.starts_at | date: 'HH:mm' }}
               }

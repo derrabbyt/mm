@@ -1,9 +1,3 @@
-"""Every SQLAlchemy statement the meetups module runs.
-
-`SQLAlchemyError` never leaves this file. Primary keys arrive parsed, but the
-caller's original spelling comes along so errors can name the id it sent.
-"""
-
 import logging
 import uuid
 from collections.abc import Sequence
@@ -35,10 +29,6 @@ def _rollback(db: Session, what: str) -> None:
 
 
 def _linked_account_missing(exc: SQLAlchemyError, account_id: uuid.UUID | None) -> bool:
-    """account_id is the only foreign key the client supplies - the meetup is
-    resolved beforehand and the creator is the authenticated caller - so a
-    constraint violation with one set means the account does not exist. That is
-    a client mistake, and a 503 would invite a retry that can never succeed."""
     return account_id is not None and isinstance(exc, IntegrityError)
 
 
@@ -85,8 +75,6 @@ def list_participants(db: Session, meetup_id: uuid.UUID) -> Sequence[MeetupParti
 def get_participant(
     db: Session, meetup_id: uuid.UUID, pk: uuid.UUID, *, participant_id: str
 ) -> MeetupParticipant | None:
-    """Looked up by id *and* meetup, so an id from another meetup reads as
-    absent instead of being editable through the wrong path."""
     try:
         return db.scalars(
             select(MeetupParticipant).where(
@@ -120,7 +108,6 @@ def save_participant(
     linked_account_id: uuid.UUID | None,
     participant_id: str,
 ) -> MeetupParticipant:
-    """Flush the pending changes on an already-loaded participant."""
     try:
         db.commit()
     except SQLAlchemyError as exc:

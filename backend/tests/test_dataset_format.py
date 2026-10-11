@@ -1,15 +1,3 @@
-"""The Dataset format, at the one seam the writer and the reader share.
-
-`core.dataset` is the definition of what a Dataset is: `modules/matrix` writes
-one through it and `modules/rendezvous` reads one through it, so a Dataset the
-reader could not load is rejected where it is written. These tests exercise that
-definition directly - no bake, no routing engine, no database.
-
-The failing manifest is a real artefact: `manifest-missing-max-seconds.json` is
-the file the producing repo leaves behind on a re-run, and pointing the reader
-at it used to raise `KeyError` while the application was starting.
-"""
-
 import json
 from datetime import datetime
 from pathlib import Path
@@ -30,9 +18,6 @@ shipped = pytest.mark.skipif(
     not (settings.dataset_dir / "manifest.json").exists(),
     reason=f"no baked dataset at {settings.dataset_dir}",
 )
-
-
-# --- the Departure table, stated once -----------------------------------
 
 
 def test_the_departure_table_names_the_thirteen_matrices_a_dataset_carries():
@@ -71,7 +56,6 @@ def test_every_departure_carries_its_own_matrix_key():
     ],
 )
 def test_a_transit_key_follows_the_day_class_and_the_nearest_hour(day, hour, expected):
-    # August 2026: the 3rd is a Monday, so the 8th is a Saturday.
     assert fmt.pick_transit_key(datetime(2026, 8, day, hour, tzinfo=VIENNA)) == expected
 
 
@@ -87,9 +71,6 @@ def test_a_static_mode_has_one_time_independent_matrix():
     assert TravelMode.TRANSIT not in fmt.STATIC_MATRIX_KEY
 
 
-# --- a real Dataset validates and yields what the calculation needs -----
-
-
 @shipped
 def test_the_shipped_dataset_validates_and_yields_the_values_the_reader_needs():
     metadata = fmt.load_metadata(settings.dataset_dir)
@@ -100,8 +81,6 @@ def test_the_shipped_dataset_validates_and_yields_the_values_the_reader_needs():
     assert metadata.timezone == VIENNA
     assert set(fmt.MATRIX_KEYS) <= set(metadata.manifest.matrices)
 
-    # The ceiling a traveller on this mode is held to, which is what the
-    # reader reports as the horizon when nobody can reach anybody.
     assert metadata.manifest.matrices["walk"].cap_seconds == 28800
     assert metadata.manifest.matrices["transit_wed08"].cap_seconds == 5400
 
@@ -117,13 +96,7 @@ def test_every_matrix_the_manifest_lists_opens_at_the_grid_s_shape():
         assert matrix.dtype == np.uint16
 
 
-# --- a Dataset the reader could not load is rejected, by field ----------
-
-
 def test_a_manifest_missing_a_ceiling_is_rejected_naming_the_field():
-    """The producing repo's re-run path writes exactly this file. The reader
-    read `max_seconds` unconditionally, so this used to raise `KeyError` at
-    import of the rendezvous module - i.e. the API never started."""
     with pytest.raises(DatasetFormatError) as raised:
         fmt.read_manifest(FIXTURES / "manifest-missing-max-seconds.json")
 

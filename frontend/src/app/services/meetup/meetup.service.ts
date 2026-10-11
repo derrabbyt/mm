@@ -12,15 +12,10 @@ import { TravelMode } from '../../open-api/model/travel-mode';
 import { PhotonService } from '../photon/photon.service';
 import { Router } from '@angular/router';
 
-/** Below this the answer is either trivial or rejected, so we don't ask. */
 const MIN_PLACED_FOR_RENDEZVOUS = 2;
 
-/** Shown while the reverse lookup is in flight, and left in place if it fails. */
 const UNNAMED_LOCATION = 'Dropped pin';
 
-/** How far around the rendezvous point to look for events. Sent explicitly
- *  rather than left to the backend default, so the circle drawn on the map is
- *  guaranteed to be the area that was actually searched. */
 const EVENT_RADIUS_METERS = 1000;
 
 @Injectable({
@@ -38,12 +33,7 @@ export class MeetupService {
   private readonly _selectedId = signal<string | null>(null);
   private readonly _rendezvous = signal<RendezvousRead | null>(null);
   private readonly _rendezvousError = signal<string | null>(null);
-  /** Scraped events near the rendezvous point, nearest first. Empty until
-   *  there is a rendezvous to search around. */
   private readonly _events = signal<EventRead[]>([]);
-  /** Participant id -> human-readable place. Display only, never sent to the
-   *  API, and only filled for locations set during this session - reverse
-   *  geocoding every participant on load would hammer Photon. */
   private readonly _addressLabels = signal<Record<string, string>>({});
 
   readonly meetups = this._meetups.asReadonly();
@@ -62,7 +52,6 @@ export class MeetupService {
 
   readonly placed = computed(() => this._participants().filter((p) => p.position));
 
-  /** Travel times joined to participant names, in the order they are listed. */
   readonly travelTimes = computed(() => {
     const byId = new Map(this._participants().map((p) => [p.id, p]));
     return (this._rendezvous()?.per_participant ?? []).map((entry) => ({
@@ -137,7 +126,6 @@ export class MeetupService {
     this.update(id, { name, travel_mode: travelMode });
   }
 
-  /** Place the selected participant, e.g. from a map click. */
   placeParticipant(position: Position) {
     const selected = this.selected();
     if (selected) {
@@ -145,11 +133,6 @@ export class MeetupService {
     }
   }
 
-  /**
-   * Set one participant's position. Pass `label` when the caller already knows
-   * what the place is called - picking it from the address search - otherwise
-   * the name is looked up from the coordinates.
-   */
   setParticipantPosition(id: string, position: Position, label?: string) {
     this.update(id, { position });
 
@@ -161,7 +144,6 @@ export class MeetupService {
     this.setAddressLabel(id, UNNAMED_LOCATION);
     this.photon.reverse(position, { lang: 'de' }).subscribe({
       next: (place) => place && this.setAddressLabel(id, place.label),
-      // The position is already saved, so a failed lookup costs only the name.
       error: (err) => console.error('[meetup] reverse geocoding failed', err),
     });
   }
@@ -207,7 +189,6 @@ export class MeetupService {
     });
   }
 
-  /** Every participant change moves the rendezvous, so the two travel together. */
   private setParticipants(participants: MeetupParticipantRead[]) {
     this._participants.set(participants);
     this.refreshRendezvous();
@@ -229,8 +210,6 @@ export class MeetupService {
         this.loadEvents(meetupId);
       },
       error: (err) => {
-        // 422s are expected here - someone off the grid, or nobody reachable
-        // within the hour the matrices cover - and the envelope explains which.
         this._rendezvous.set(null);
         this._rendezvousError.set(err?.error?.message ?? 'No rendezvous spot could be found');
         this._events.set([]);
@@ -238,16 +217,12 @@ export class MeetupService {
     });
   }
 
-  /** Only ever called with a rendezvous in hand - the backend recomputes the
-   *  same spot and searches around it. */
   private loadEvents(meetupId: string) {
     this.api.getRendezvousEvents({ meetupId, radiusMeters: EVENT_RADIUS_METERS }).subscribe({
       next: (events) => {
         this._events.set(events);
         this.fillMissingAddresses(events);
       },
-      // Events are a bonus next to the rendezvous itself, so a failure here
-      // just leaves the list empty rather than surfacing an error.
       error: (err) => {
         console.error('[meetup] loading nearby events failed', err);
         this._events.set([]);
@@ -255,9 +230,6 @@ export class MeetupService {
     });
   }
 
-  /** The scraper often has coordinates but no street, so ask Photon what is at
-   *  the point. One request per gap, against our own instance, capped by the
-   *  page size the backend returns. */
   private fillMissingAddresses(events: EventRead[]) {
     for (const event of events.filter((candidate) => !candidate.address)) {
       this.photon.reverse(event.position, { lang: 'de' }).subscribe({

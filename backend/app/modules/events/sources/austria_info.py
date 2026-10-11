@@ -1,22 +1,3 @@
-"""austria.info - the national tourism board's Algolia index.
-
-The site is a Nuxt SPA, but its Algolia credentials sit in the page source, so the
-index can be queried directly with no auth beyond the public search key.
-
-Two traps, both of which produce badly wrong counts:
-
-* **Every happening is stored once per locale** (~10 copies: `de-at`, `de-ch`,
-  `de-de`, `en-gb`, `en-us`, `it`, ...). Without a `language` facet filter you get
-  tenfold duplicates. `story_id` is the cross-locale identity, so it is what
-  identifies the Listing.
-* **`locationCity:Vienna` returns zero.** The city field is unreliable; the
-  usable geo key is the `state` facet (`state:Vienna`).
-
-Low volume for Vienna (~13 on a given day) and skewed to long-running
-institutions rather than dated happenings. Carried for completeness; it is not a
-coverage workhorse.
-"""
-
 import datetime as dt
 import json
 from collections.abc import Iterator
@@ -56,8 +37,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
             "query": "",
             "hitsPerPage": HITS_PER_PAGE,
             "page": page,
-            # Overlap test on the numeric timestamps, so multi-day runs that
-            # straddle the window are included.
             "filters": (
                 f"dateFromTimestamp <= {int(end.timestamp())} "
                 f"AND dateToTimestamp >= {int(start.timestamp())}"
@@ -96,7 +75,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         return
 
     for hit in data.get("hits") or []:
-        # story_id is stable across locales; objectID is not.
         listing_id = hit.get("story_id") or hit.get("objectID")
         if not listing_id:
             continue
@@ -111,8 +89,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         except ValueError:
             continue
 
-        # The index carries dates as "YYYY-MM-DD HH:MM" but the time is 00:00
-        # throughout, so these are day-level, not clock-level.
         occurrence = RawOccurrence(start=start, end=end if end != start else None)
 
         categories = [c for c in (hit.get("category") or []) if c]

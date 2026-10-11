@@ -1,40 +1,3 @@
-"""eventjet - an Austrian ticketing platform.
-
-`/wp-json/` is **401** (locked) and the listing pages carry no event markup, but
-the **detail pages do have JSON-LD `Event`** - which is what makes this Source
-viable at all. So: harvest `/e/{slug}/` links from the listing, then fetch each
-one.
-
-No date filter exists, so the window is left to normalisation. The platform is
-Austria-wide rather than Vienna-only, so results are region-filtered - though
-the JSON-LD frequently publishes no address at all, and `region.is_vienna`
-deliberately keeps a Listing it knows nothing about.
-
-**Where a happening is, is not in the JSON-LD at all.** The `Event` node carries
-no `location`, so reading only the JSON-LD leaves every Listing unplaced - it
-cannot be found near a Rendezvous, and the Source contributes rows nobody sees.
-The page has it twice over: `.single__hero-venue-name` and an
-`address.address--venue` giving "Street, POSTCODE City, Country", and a pair of
-Open Graph meta tags giving coordinates.
-
-Those meta tags are spelt `event:location:latitude` and
-**`event:location:longitued`** - the site's own typo, on every page of the
-crawl. Reading the correct spelling finds nothing, which is how the position
-went unnoticed: the pages look like they publish none.
-
-That matters twice, because the platform is Austria-wide. Without coordinates
-`region.is_vienna` keeps a Listing it knows nothing about, so this Source was
-quietly contributing Krems, Mödling and Frankfurt to a Vienna catalogue - a
-majority of what it returned.
-
-Two more traps. The platform emits **midnight-UTC stamps for day-level
-entries**, and reading those as a real 00:00 start sorts a season ticket above
-every evening concert. And the Event node's `image` is usually an unresolved
-`{"@id": ...}` reference rather than a URL - it resolves to a 2019 site header
-shared by every event - so in practice the page's `og:image` is what gets
-stored, that being the one picture the site says is this event's.
-"""
-
 import re
 from collections.abc import Iterator
 
@@ -88,7 +51,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
         try:
             detail = ctx.http.get(url)
         except FetchError:
-            # One delisted event must not discard the rest of the sweep.
             continue
         yield RawPayload(url=detail.url, body=detail.body, kind="detail")
 
@@ -99,12 +61,6 @@ _ADDRESS = re.compile(
 
 
 def _coordinates(soup: BeautifulSoup) -> tuple[float | None, float | None]:
-    """The position, from the Open Graph tags the site misspells.
-
-    `longitued` first because that is what every page of the crawl actually
-    emits; the correct spelling is tried after, so this keeps working on the
-    day somebody fixes it.
-    """
 
     def content(key: str) -> str:
         tag = soup.find("meta", attrs={"property": key}) or soup.find(
@@ -123,12 +79,6 @@ def _coordinates(soup: BeautifulSoup) -> tuple[float | None, float | None]:
 
 
 def _venue(soup: BeautifulSoup) -> dict[str, str | None]:
-    """Where the page says the happening is, which the JSON-LD does not.
-
-    The address renders as "Street 30, 1040 Wien, Österreich" in one element,
-    so it is split here rather than stored whole: a street with the city and
-    postcode still in it geocodes worse and duplicates columns of its own.
-    """
     name = soup.select_one(".single__hero-venue-name")
     details = soup.select_one("address.address--venue .address__details")
     where: dict[str, str | None] = {
@@ -153,8 +103,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
     soup = BeautifulSoup(payload.text, "lxml")
     on_page = _venue(soup)
     latitude, longitude = _coordinates(soup)
-    # The page's other <img> tags are "more events" cards, so the only picture
-    # that reliably belongs to this event is the one it puts on its preview.
     page_image = markup.og_image(soup)
 
     seen: set[str] = set()
@@ -165,14 +113,11 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             continue
         end = paired_end(start, parse_iso_when(node.get("endDate")))
 
-        # The node names its own page, and that page's slug is the site's id.
-        # A slug can host a series, so the start is part of the identity too.
         slug = (node.get("url") or payload.url).rstrip("/").rsplit("/", 1)[-1]
         source_ref = f"{slug}-{start.isoformat()[:16]}"[:120]
         if source_ref in seen:
             continue
 
-        # The page's own venue block, since the Event node has no `location`.
         where = {**jsonld.place(node), **{k: v for k, v in on_page.items() if v}}
         if not region.is_vienna(latitude, longitude, where["postcode"], where["city"]):
             continue

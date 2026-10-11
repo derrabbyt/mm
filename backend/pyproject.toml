@@ -11,9 +11,6 @@ dependencies = [
     "fastapi[standard]>=0.140.0",
     "h3>=4.5.0",
     "lxml>=5.0",
-    # The reader maps and minimises over the matrices, so it needs numpy
-    # whether or not the routing engine that wrote them is installed - it used
-    # to arrive only underneath r5py.
     "numpy>=2.5.1",
     "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.4",
@@ -27,12 +24,6 @@ dependencies = [
 ]
 
 [dependency-groups]
-# The routing engine, and the only container that carries it. It needs a JVM
-# and a 64 MB jar beside it, the bake is the only thing that ever imports it,
-# and it was a default dependency nothing imported - so this is a move into a
-# group rather than the deletion it looks like. See Dockerfile's `matrix` stage.
-#
-#   uv sync --group matrix     to run the bake outside its container
 matrix = [
     "geopandas>=1.1.4",
     "r5py>=1.1.7",

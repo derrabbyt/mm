@@ -1,17 +1,3 @@
-"""What the transit feed says about itself, and the dates a bake routes over.
-
-A Departure is a specific calendar date and the router reads whatever service
-actually ran on it. The glossary says so deliberately: assuming a Departure
-means "a Saturday in general" is the assumption that put the shipped Dataset's
-Saturday Departure on a public holiday, on which Wiener Linien runs the Sunday
-timetable. Three Saturday matrices came out byte-identical to their Sunday
-counterparts and every Saturday Rendezvous has been computed from Sunday
-timetables since.
-
-So the dates are derived here, from the feed, and no calendar date appears in
-code. A new annual feed moves them with it.
-"""
-
 import csv
 import io
 import logging
@@ -37,7 +23,6 @@ WEEKDAY_COLUMNS = (
     "sunday",
 )
 
-#: GTFS `calendar_dates.txt` exception types.
 SERVICE_ADDED = "1"
 SERVICE_REMOVED = "2"
 
@@ -58,23 +43,12 @@ class _Service:
 
 @dataclass(frozen=True)
 class ServiceCalendar:
-    """When a feed claims to be valid, and what runs on a given day.
-
-    Enough of a GTFS feed to choose Departures from, and nothing more - the
-    timetable itself is the router's business.
-    """
-
     window: tuple[date, date]
     timezone: ZoneInfo
     services: tuple[_Service, ...]
     exceptions: Mapping[date, tuple[tuple[str, str], ...]]
 
     def active_services(self, day: date) -> frozenset[str]:
-        """Services running on `day`, after the calendar's own exceptions.
-
-        This is the question a public holiday answers differently from the
-        Saturday either side of it, which is the whole reason it is asked.
-        """
         running = {
             service.service_id
             for service in self.services
@@ -88,7 +62,6 @@ class ServiceCalendar:
         return frozenset(running)
 
     def days(self, weekday: int) -> list[date]:
-        """Every date in the validity window falling on `weekday`."""
         start, end = self.window
         first = start + timedelta(days=(weekday - start.weekday()) % 7)
         weeks = (end - first).days // 7 + 1
@@ -97,16 +70,6 @@ class ServiceCalendar:
 
 @dataclass(frozen=True)
 class ReferenceWeek:
-    """One representative date per class of day, chosen out of a feed.
-
-    Not necessarily one calendar week, and deliberately so: a weekday's typical
-    service and a weekend's typical service belong to different parts of the
-    year, because school terms move weekday timetables and leave weekends
-    alone. Forcing all three into one Monday-to-Sunday span would mean picking
-    an atypical day for at least one of them, which is the defect this is here
-    to prevent.
-    """
-
     dates: Mapping[DayClass, date]
 
     def moment(self, departure: Departure, timezone: ZoneInfo) -> datetime:
@@ -121,8 +84,6 @@ class ReferenceWeek:
 
 
 def _rows(archive: zipfile.ZipFile, name: str) -> Iterable[dict[str, str]]:
-    """One GTFS table. `utf-8-sig` because feeds ship a byte-order mark and the
-    first column name is otherwise unreadable."""
     with archive.open(name) as raw:
         text = io.TextIOWrapper(raw, encoding="utf-8-sig", newline="")
         yield from csv.DictReader(text)
@@ -136,7 +97,6 @@ def _date(stamp: str) -> date:
 
 
 def read_service_calendar(gtfs_zip: Path) -> ServiceCalendar:
-    """The validity window, the timezone and the service calendar of a feed."""
     try:
         archive = zipfile.ZipFile(gtfs_zip)
     except (OSError, zipfile.BadZipFile) as error:
@@ -145,9 +105,6 @@ def read_service_calendar(gtfs_zip: Path) -> ServiceCalendar:
     with archive:
         names = set(archive.namelist())
 
-        # A feed may state its services as weekly patterns with a date range,
-        # as a list of individual dates, or both - GTFS allows any of the three
-        # and this only needs to know which days run what.
         services: list[_Service] = []
         if "calendar.txt" in names:
             for row in _rows(archive, "calendar.txt"):
@@ -184,7 +141,6 @@ def read_service_calendar(gtfs_zip: Path) -> ServiceCalendar:
 
         timezone = _timezone(archive, names)
 
-    # Whichever of the two the feed used says how far it reaches.
     starts = [service.start for service in services] + list(exceptions)
     ends = [service.end for service in services] + list(exceptions)
     window = (min(starts), max(ends))
@@ -204,12 +160,6 @@ def read_service_calendar(gtfs_zip: Path) -> ServiceCalendar:
 
 
 def _timezone(archive: zipfile.ZipFile, names: set[str]) -> ZoneInfo:
-    """The feed's own timezone, which is also the Dataset's.
-
-    Taken from the feed rather than configured: the travel times are read off
-    this operator's timetable, so the hours they were read at are this
-    operator's local hours.
-    """
     if "agency.txt" not in names:
         raise FeedError("the transit feed has no agency.txt, so no timezone")
     for row in _rows(archive, "agency.txt"):
@@ -223,16 +173,6 @@ def _timezone(archive: zipfile.ZipFile, names: set[str]) -> ZoneInfo:
 
 
 def reference_week(calendar: ServiceCalendar) -> ReferenceWeek:
-    """A representative date for each class of day, out of the feed itself.
-
-    For each class, the pattern of services that most dates of that weekday
-    share is what "an ordinary one" means for this feed, and the chosen date is
-    the one closest to the middle of the validity window that has it. Holidays
-    and timetable changeovers are the minority by construction, so this picks
-    around them without anyone having to supply a holiday calendar - and it is
-    the middle of the window, so a Departure is nowhere near an edge where
-    service is being handed over between feeds.
-    """
     start, end = calendar.window
     middle = start + (end - start) / 2
 
@@ -276,7 +216,6 @@ def reference_week(calendar: ServiceCalendar) -> ReferenceWeek:
 def departures_for(
     week: ReferenceWeek, calendar: ServiceCalendar
 ) -> dict[str, datetime]:
-    """Each Departure in the table as a moment this feed actually covers."""
     moments = {
         departure.matrix_key: week.moment(departure, calendar.timezone)
         for departure in DEPARTURES

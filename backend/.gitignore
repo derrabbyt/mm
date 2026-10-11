@@ -1,20 +1,16 @@
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual environments
 .venv/
 venv/
 env/
 ENV/
 
-# Environment variables / secrets
 .env
 .env.*
 !.env.example
 
-# Python tooling
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -24,54 +20,37 @@ htmlcov/
 .tox/
 .nox/
 
-# Build / packaging
 build/
 dist/
 *.egg-info/
 .eggs/
 
-# IDEs / editors
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS files
 .DS_Store
 Thumbs.db
 
-# Logs
 *.log
 
-# Local databases
 *.db
 *.sqlite
 *.sqlite3
 
-# FastAPI / Uvicorn runtime
 *.pid
 
-# Optional: uploaded/local generated files
 uploads/
 tmp/
 .agents
 .claude
 
-# Baked travel-time matrices. v1 is 5 MB and already tracked; v2 covers the
-# whole bbox at 111 MB per matrix (1.4 GB total) and has to stay out of git.
 app/data/output_dev/vienna_v2_h3r9/
 
-# Photon's OpenSearch index (1.3 GB), rebuilt by the container from the
-# Austria extract when missing.
 data/photon/
 
-# Archived scrape payloads: evidence for debugging a parser, expired on a
-# schedule by the scrape itself. Reproducible by re-running, and large.
 data/archive/
-# The routing engine's jar: 64 MB, in the matrix image rather than in git.
-# scripts/fetch-r5-jar.sh puts it here.
 vendor/
 
-# The OSM extract and the transit feed the bake routes over: the geodata job's
-# output, hundreds of megabytes, and reproducible from upstream.
 data/geodata/

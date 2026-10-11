@@ -1,23 +1,3 @@
-"""events.at - a broad commercial calendar with a native per-day query.
-
-Two things about their URL scheme are easy to get wrong, and both fail *silently*:
-
-1. `/calendar/date/{per_page}/{page}` is **pagination, not a date**. The day is
-   the `date=YYYY-MM-DD` query parameter; omit it and the site quietly returns
-   today's instead of erroring.
-2. The `[]` in `state[]` / `event_type[]` **must stay literal**. Sent as
-   `%5B%5D` the site answers 200 with the filters ignored, so the whole day
-   comes back and it looks like the filter matched everything. This is why the
-   HTTP client is built on stdlib `urllib` - see `core/http.py`.
-
-Each happening appears twice per listing - a desktop `card--horizontal` and a
-mobile `card--event-timeline` inside one `div.searchResults__timeline` - so the
-results are deduplicated on the URL.
-
-The card's `<time datetime>` is the *series'* next showtime, not the queried
-day's, so it is deliberately ignored: the queried date is authoritative.
-"""
-
 import datetime as dt
 import re
 from collections.abc import Iterator
@@ -61,8 +41,6 @@ STATES = ("Wien",)
 
 _SLUG_ID = re.compile(r"/event/([a-z0-9\-]+)")
 
-# The marker for one result. Read as a selector when parsing and counted when
-# paging, so it is named once.
 BLOCK_CLASS = "searchResults__timeline"
 
 
@@ -84,21 +62,11 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
                 meta={"date": day.isoformat()},
             )
             yield payload
-            # A short page is the last page.
             if _count_blocks(resp.text) < PER_PAGE:
                 break
 
 
 def _count_blocks(html: str) -> int:
-    """How many result blocks a page holds, as a cheap "is it full?" test.
-
-    Counted on the class name alone rather than on the whole `class="grid
-    searchResults__timeline"` attribute: the same marker is read by `parse` as a
-    selector, and requiring a literal attribute string means reordering the
-    classes stops paging silently. A string count rather than a parse because
-    this runs per page on a ~100 KB document only to decide whether to ask for
-    the next one.
-    """
     return html.count(BLOCK_CLASS)
 
 
@@ -139,8 +107,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
     seen: set[str] = set()
     for block in container.select(f"div.{BLOCK_CLASS}"):
-        # The horizontal card carries the teaser text; fall back to whichever
-        # card is present.
         card = block.select_one("article.card--horizontal") or block.select_one(
             "article.card"
         )
@@ -169,7 +135,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
         yield RawListing(
             source_ref=source_ref,
-            # The queried day is authoritative; no clock time in the listing.
             occurrences=[RawOccurrence(start=day)],
             url=url,
             title=link.get_text(" ", strip=True),

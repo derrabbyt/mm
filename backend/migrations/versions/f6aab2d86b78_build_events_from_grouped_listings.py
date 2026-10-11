@@ -19,7 +19,6 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision: str = "f6aab2d86b78"
 down_revision: str | Sequence[str] | None = "d7eb4d06c3d0"
 branch_labels: str | Sequence[str] | None = None
@@ -27,7 +26,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
     op.create_table(
         "events",
         sa.Column("id", sa.BigInteger(), nullable=False),
@@ -118,7 +116,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
     op.drop_index(
         "ix_event_listings_listing_id", table_name="event_listings", schema="content"
     )

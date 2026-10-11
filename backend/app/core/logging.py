@@ -11,8 +11,6 @@ COLOR_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
 class ColorFormatter(logging.Formatter):
-    """Colours the level and dims the timestamp and logger name."""
-
     COLORS: ClassVar[dict[str, str]] = {
         "DEBUG": "\033[2;36m",
         "INFO": "\033[32m",
@@ -34,16 +32,7 @@ class ColorFormatter(logging.Formatter):
         return super().format(record)
 
 
-# not sure if we actually want to do that, i feel like we could lose info
-# but leave as long as it works
 class DropASGIExceptionEcho(logging.Filter):
-    """Drops uvicorn's copy of an exception the catch-all handler already logged.
-
-    Starlette re-raises after running the 500 handler so that the server can
-    log the error, so every unhandled exception is reported twice. Ours names
-    the request, so uvicorn's copy is the one to go.
-    """
-
     MESSAGE = "Exception in ASGI application"
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -54,13 +43,6 @@ class DropASGIExceptionEcho(logging.Filter):
 
 
 def setup_logging() -> None:
-    """Install the app-wide logging config.
-
-    Must run before uvicorn serves and before an RQ worker starts working.
-    Both libraries only attach their own handlers when nothing upstream
-    already handles their records, so configuring the root logger first is
-    what keeps every line in a single format instead of two competing ones.
-    """
 
     color = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
 
@@ -92,8 +74,6 @@ def setup_logging() -> None:
                 # at INFO so LOG_LEVEL=DEBUG surfaces our logs without also
                 # unleashing uvicorn's protocol-level chatter.
                 "uvicorn": {"handlers": [], "level": "INFO", "propagate": True},
-                # The filter sits on the logger, not the handler, so it runs
-                # before the record propagates to root.
                 "uvicorn.error": {
                     "handlers": [],
                     "level": "INFO",

@@ -44,9 +44,6 @@ def _to_schema(participant: MeetupParticipant) -> MeetupParticipantRead:
 
 
 def get_owned_meetup(db: Session, meetup_id: str, account_id: uuid.UUID) -> Meetup:
-    """The meetup, or `MeetupNotFoundError` when it does not exist, when the id
-    is not a UUID at all, or when it belongs to somebody else - all three read
-    the same from outside, so an id cannot be probed for existence."""
     pk = parse_id(meetup_id)
     if pk is None:
         raise MeetupNotFoundError(meetup_id=meetup_id)
@@ -130,7 +127,6 @@ def get_participants(
 def get_positioned_participants(
     db: Session, meetup_id: uuid.UUID
 ) -> tuple[list[ParticipantInfo], list[uuid.UUID]]:
-    """Participants that can be routed, plus the ids of those that cannot."""
     participants = repository.list_participants(db, meetup_id)
 
     positioned = [

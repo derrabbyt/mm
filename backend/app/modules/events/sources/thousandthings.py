@@ -1,44 +1,3 @@
-"""1000thingsmagazine.com - curated editorial picks with real street addresses.
-
-The site has **no event post type**; it publishes two WordPress posts that are
-rewritten in place each week and between them cover Mon–Sun. Their ids are
-therefore stable and are fetched directly - `?search=` is too fuzzy, ranking the
-monthly roundups in alongside them.
-
-The **monthly roundup is deliberately excluded**: only 5 of its 15 entries carry a
-full `Venue: Street N, ZIP`, the rest degrade to a postcode or a bare venue name,
-and it uses a different template (`Die wichtigsten Infos:` sub-headings). Two
-parsers for worse data is a poor trade.
-
-Structure per event: an `<h2>` under a weekday divider, then a `<ul>`:
-
-    li[0]  MO, 10.8.2026, 20:30 Uhr                  <- weekday, date(s), time(s)
-    li[1]  Kino am Dach | Urban-Loritz-Platz 2, 1070 <- venue | street, ZIP
-    li[2:] description lines, last one usually price
-
-Three dateline shapes, all of which occur:
-
-    DO, 6.8.2026, 17–20 Uhr                            one day
-    DO, 6.8 – SA, 8.8.2026, ab 17 Uhr                  a run; note the year-less first date
-    FR, 7.8.2026, ab 17 Uhr & SA, 8.8.2026, 10–23 Uhr  separate days, each with its OWN time
-
-That third shape is why each date takes the time from its own segment rather than
-the first time in the line - otherwise Saturday inherits Friday's 17:00 instead of
-10:00.
-
-**No `image_url`, deliberately.** The rendered post body contains no `<img>`
-at all - it is a text roundup. The post has a WordPress featured image, but that
-is one image for the whole week's article, not per event.
-
-What it does carry per event is an **Instagram embed** - the organiser's own
-announcement - which lands in `origin_url`. Two things hide it: the markup is
-base64 in a Borlabs cookie-blocker attribute rather than a `<blockquote>`, and
-the embed follows the event's `<ul>` rather than preceding it, so headings are
-mapped to permalinks in a pre-pass. Instagram itself answers a login wall
-unauthenticated, so the permalink cannot be resolved to a picture without an
-oEmbed token; it is stored as the link it is, not as an image.
-"""
-
 import base64
 import binascii
 import datetime as dt
@@ -68,7 +27,6 @@ SPEC = SourceSpec(
 )
 
 API = "https://www.1000thingsmagazine.com/wp-json/wp/v2/posts"
-# Stable ids; a title check guards against the posts being repurposed.
 POSTS = {22888: "Weekend-Preview", 918422: "Wochenvorschau"}
 
 WEEKDAYS = {
@@ -81,7 +39,6 @@ WEEKDAYS = {
     "SONNTAG",
 }
 
-# Matches "6.8.2026" and the year-less "6.8" of "DO, 6.8 - SA, 8.8.2026".
 _DATE = re.compile(r"\b(\d{1,2})\.(\d{1,2})\.?(?:(\d{4}))?")
 _TIME = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*(?:[–—-]\s*\d{1,2}(?::\d{2})?\s*)?Uhr")
 _ZIP = re.compile(r"\b(\d{4})\b")
@@ -104,7 +61,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
 
 
 def _parse_time(segment: str) -> str | None:
-    """First clock time in a dateline segment, ignoring the dates themselves."""
     cleaned = _DATE.sub(" ", segment)
     match = _TIME.search(cleaned)
     if not match:
@@ -113,15 +69,9 @@ def _parse_time(segment: str) -> str | None:
 
 
 def parse_dateline(line: str, default_year: int) -> list[tuple[dt.date, str | None]]:
-    """Turn the date line into (date, start_time) pairs.
-
-    Each date takes the time from *its own* segment of the line, because the
-    "A & B" form gives different times per day.
-    """
     hits = list(_DATE.finditer(line))
     if not hits:
         return []
-    # A year stated anywhere applies to the dates that omit it.
     year = next((int(m.group(3)) for m in reversed(hits) if m.group(3)), default_year)
 
     dated: list[tuple[dt.date, str | None]] = []
@@ -142,7 +92,6 @@ def parse_dateline(line: str, default_year: int) -> list[tuple[dt.date, str | No
     if len(dated) < 2:
         return dated
 
-    # A dash between the first two dates is a run; "&" or "," means separate days.
     between = line[hits[0].end() : hits[1].start()]
     if re.search(r"[–—-]", between) and "&" not in between:
         first, last = min(d for d, _ in dated), max(d for d, _ in dated)
@@ -155,7 +104,6 @@ def parse_dateline(line: str, default_year: int) -> list[tuple[dt.date, str | No
 
 
 def parse_venues(line: str) -> list[dict[str, str | None]]:
-    """Split "Venue | Street N, ZIP", possibly joined by "&"."""
     out: list[dict[str, str | None]] = []
     for part in re.split(r"\s+&\s+", line):
         part = part.strip(" .,")
@@ -164,7 +112,6 @@ def parse_venues(line: str) -> list[dict[str, str | None]]:
         venue, _, address = part.partition("|")
         venue, address = venue.strip(" ,"), address.strip()
         if not address:
-            # "Schlingermarkt, 1210" - a bare name plus postcode, no street.
             address, venue = venue, _ZIP.sub("", venue).strip(" ,")
         zip_match = _ZIP.search(address)
         street = city = postcode = None
@@ -174,8 +121,6 @@ def parse_venues(line: str) -> list[dict[str, str | None]]:
             city = address[zip_match.end() :].strip(" ,") or None
         elif address != venue:
             street = address or None
-        # Never echo the venue name back as a street: it geocodes to something
-        # arbitrary. "Schlingermarkt, 1210" has no street at all.
         if street and street == venue:
             street = None
         out.append(
@@ -193,12 +138,6 @@ _PERMALINK = re.compile(r'data-instgrm-permalink="([^"?]+)')
 
 
 def embed_links(soup: BeautifulSoup) -> dict[str, str]:
-    """Map each heading to the Instagram post embedded under it.
-
-    The site runs a consent plugin that replaces every embed with a placeholder
-    holding the real markup base64-encoded in `data-borlabs-cookie-content` -
-    so the permalink is invisible to any search of the rendered HTML.
-    """
     out: dict[str, str] = {}
     heading: str | None = None
     for element in soup.find_all(["h2", "h3", "div"]):
@@ -242,15 +181,10 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
     title = (post.get("title") or {}).get("rendered", "")
     expected = POSTS.get(post_id)
     if expected and expected not in title:
-        # The post was repurposed; emitting whatever is there now would be worse
-        # than emitting nothing, and the health rules will flag the zero.
         return
 
     html = (post.get("content") or {}).get("rendered", "")
     link = post.get("link")
-    # The post's own `modified` stamp decides the year a date omits, which is
-    # what keeps this parse reproducible over a saved payload. Vienna's current
-    # year is only the fallback for a post that carries no stamp at all.
     modified = str(post.get("modified") or "")
     default_year = dt.datetime.now(TZ).year
     if len(modified) >= 4 and modified[:4].isdigit():
@@ -265,7 +199,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         text = re.sub(r"\s+", " ", element.get_text(" ", strip=True))
 
         if element.name in ("h2", "h3"):
-            # A weekday divider is not a heading; it only ends the previous one.
             if text.upper() in WEEKDAYS:
                 heading = None
             elif text and "Newsletter" not in text:
@@ -274,7 +207,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
                 heading = None
             continue
 
-        # A <ul> only counts as detail if a heading preceded it.
         if heading is None:
             continue
         items = [
@@ -294,8 +226,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
         price, is_free, price_line = _price(body)
         description = " | ".join(line for line in body if line != price_line) or None
 
-        # One Listing with all its dates; each Occurrence keeps the time from
-        # its own dateline segment.
         occurrences = []
         for day, time_text in schedule:
             if time_text:
@@ -306,8 +236,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             else:
                 occurrences.append(RawOccurrence(start=day))
 
-        # The post carries no id per happening, so derive one that survives the
-        # week's rewrites: the title plus its first date.
         listing_key = f"{heading}-{schedule[0][0].isoformat()}"
         source_ref = re.sub(r"[^\w\-]+", "-", listing_key.casefold()).strip("-")[:120]
         if source_ref in seen:
@@ -318,9 +246,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             source_ref=source_ref,
             occurrences=occurrences,
             url=link,
-            # The organiser's own announcement, and a strong cross-Source key:
-            # two Sources pointing at one Instagram post are describing one
-            # real-world happening.
             origin_url=links.get(heading),
             title=heading,
             description=description,
@@ -333,6 +258,5 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             price_min=price,
             price_currency="EUR" if price is not None else None,
             is_free=is_free,
-            # The post has no taxonomy; the weekday divider is not a category.
             categories_raw=[],
         )

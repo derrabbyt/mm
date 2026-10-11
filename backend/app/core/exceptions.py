@@ -13,7 +13,6 @@ class AppBaseException(Exception):
 
     @classmethod
     def model(cls) -> type[BaseModel]:
-        """Response schema for this error, with `error` as the discriminator."""
         return create_model(
             cls.__name__,
             error=(Literal[cls.code], ...),
@@ -37,8 +36,6 @@ class FieldError(BaseModel):
 
 
 class ValidationError(AppBaseException):
-    """Raised by FastAPI"""
-
     code = "validation_error"
     status = 422
 
@@ -57,15 +54,11 @@ class ValidationError(AppBaseException):
 
 
 class RouteNotFoundError(AppBaseException):
-    """Raised by Starlette"""
-
     code = "http_404"
     status = 404
 
 
 class MethodNotAllowedError(AppBaseException):
-    """Raised by Starlette."""
-
     code = "http_405"
     status = 405
 
@@ -221,13 +214,6 @@ class EventsLoadError(AppBaseException):
 
 
 class ListingWriteError(AppBaseException):
-    """Raised by the events repository when a scrape cannot store what it read.
-
-    No route lists it, so it never reaches the OpenAPI schema - it is here
-    because this file is the one catalogue, and because a scrape that cannot
-    write must fail loudly rather than log and carry on.
-    """
-
     code = "listing_write_error"
     status = 503
 
@@ -236,13 +222,6 @@ class ListingWriteError(AppBaseException):
 
 
 class EventWriteError(AppBaseException):
-    """Raised by the events repository when a run cannot store Events.
-
-    Like `ListingWriteError`, no route lists it: it belongs to the job, and a
-    run that cannot write the surface people read must fail loudly rather than
-    leave yesterday's Events in place and say nothing.
-    """
-
     code = "event_write_error"
     status = 503
 
@@ -251,13 +230,6 @@ class EventWriteError(AppBaseException):
 
 
 class ScrapeLockError(AppBaseException):
-    """Raised when a run cannot find out whether another one is in progress.
-
-    Like the two above, no route lists it. A run that could not ask must not
-    assume it is alone: two overlapping scrapes each retire the Listings the
-    other has just written, so failing here is safer than carrying on.
-    """
-
     code = "scrape_lock_error"
     status = 503
 
@@ -266,10 +238,6 @@ class ScrapeLockError(AppBaseException):
 
 
 class GeocodeCacheError(AppBaseException):
-    """Raised by the geocoding repository when its cache cannot be read or
-    written. No route lists it; it is here because this file is the one
-    catalogue."""
-
     code = "geocode_cache_error"
     status = 503
 
@@ -285,9 +253,6 @@ class AccountUpsertError(AppBaseException):
         super().__init__("Account could not be loaded or created")
 
 
-# Everything that can go wrong resolving the caller, before an authenticated
-# endpoint's own body ever runs. Every router that takes CurrentAccountDep
-# spreads this into its `responses=`.
 AUTH_ERRORS = (
     MissingBearerTokenError,
     InvalidBearerTokenError,
@@ -306,7 +271,6 @@ def default_responses() -> dict[int | str, dict[str, Any]]:
 
 
 def responses(*errors: type[AppBaseException]) -> dict[int | str, dict[str, Any]]:
-    """Build a route's `responses=` from the exceptions it can raise."""
 
     by_status: dict[int, list[type[AppBaseException]]] = {}
     for error in errors:

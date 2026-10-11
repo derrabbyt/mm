@@ -1,10 +1,3 @@
-"""The import graph has no cycles, per file and per layer.
-
-Python only raises on a cycle when a module is read before it finishes
-initialising, so a tangled graph can sit there for a long time and then break
-on an unrelated reordering.
-"""
-
 import ast
 import pathlib
 import sys
@@ -27,7 +20,6 @@ KNOWN = {_name(p) for p in FILES}
 
 
 def _imports(path: pathlib.Path) -> set[str]:
-    """First-party modules this file imports, as absolute dotted paths."""
     package = _name(path).split(".")
     if path.name != "__init__.py":
         package = package[:-1]
@@ -48,7 +40,6 @@ GRAPH = {_name(p): _imports(p) for p in FILES}
 
 
 def _cycles(graph: dict[str, set[str]]) -> list[list[str]]:
-    """Tarjan's strongly connected components, keeping only the tangled ones."""
     index: dict[str, int] = {}
     low: dict[str, int] = {}
     stack: list[str] = []
@@ -95,7 +86,6 @@ def test_no_file_imports_itself_in_a_loop():
 
 
 def _layer(module: str) -> str:
-    """The architectural layer a module belongs to."""
     parts = module.split(".")
     if len(parts) >= 3 and parts[1] == "modules":
         return f"modules/{parts[2]}"
@@ -118,7 +108,6 @@ def test_no_layer_depends_on_a_layer_that_depends_on_it():
 
 @pytest.mark.parametrize("path", [p for p in FILES if p.parent.name in {"db", "core"}])
 def test_shared_plumbing_never_reaches_up_into_a_feature(path: pathlib.Path):
-    """`core/` and `db/` sit below every module. Nothing in them may import one."""
     reached = sorted(m for m in _imports(path) if m.startswith("app.modules."))
     assert not reached, (
         f"{path.relative_to(APP.parent)} imports {', '.join(reached)}. "

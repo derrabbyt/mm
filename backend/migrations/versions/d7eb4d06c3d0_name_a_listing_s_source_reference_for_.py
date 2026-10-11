@@ -19,7 +19,6 @@ from collections.abc import Sequence
 
 from alembic import op
 
-# revision identifiers, used by Alembic.
 revision: str = "d7eb4d06c3d0"
 down_revision: str | Sequence[str] | None = "b8e9bf5867be"
 branch_labels: str | Sequence[str] | None = None
@@ -27,7 +26,6 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
     op.alter_column(
         "listings", "source_event_id", new_column_name="source_ref", schema="content"
     )
@@ -41,7 +39,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
     op.execute(
         "ALTER TABLE content.listings "
         "RENAME CONSTRAINT uq_listings_source_ref TO uq_listings_source_event"

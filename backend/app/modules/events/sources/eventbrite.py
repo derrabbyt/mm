@@ -1,17 +1,3 @@
-"""eventbrite - the best structured data of the HTML Sources.
-
-`start_date` / `end_date` genuinely filter (18 events for a day against 62
-unfiltered), and every event ships as JSON-LD with a complete `PostalAddress`
-**and** `geo` coordinates - so these Listings need no geocoding.
-
-Eventbrite's official REST API dropped public event *search* years ago, so this
-HTML-plus-JSON-LD route is the better one despite the API existing.
-
-`/d/austria--vienna/` is a **radius search**, not a city filter: Bratislava,
-Graz, Mödling and Kunžak (CZ) all come back from it. Those are dropped rather
-than stored, for the reasons `region.py` sets out.
-"""
-
 from collections.abc import Iterator
 
 from .. import region
@@ -56,7 +42,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
     for node in jsonld.events_in(payload.text):
         url = node.get("url") or ""
-        # /e/<slug>-tickets-<id> - the trailing id is the stable key.
         source_ref = url.rstrip("/").rsplit("-", 1)[-1] if url else ""
         if not source_ref or source_ref in seen:
             continue

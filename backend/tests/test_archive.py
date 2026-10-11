@@ -1,12 +1,3 @@
-"""Keeping what a site actually served, so a broken parser has evidence.
-
-The committed fixtures are the tripwire; this is what there is to look at when
-the tripwire fires and nobody kept a copy of the document that set it off. So
-the contract worth testing is narrow and specific: a payload goes in, and the
-same payload - body, url, kind and the meta its parse depends on - comes back
-out later with no network anywhere near it.
-"""
-
 import datetime as dt
 import gzip
 import json
@@ -30,7 +21,6 @@ FETCHED_AT = dt.datetime(2026, 9, 27, 14, 30, tzinfo=dt.UTC)
 
 @pytest.fixture
 def archive_dir() -> pathlib.Path:
-    """Where `conftest.archive_under_tmp` already pointed the archive."""
     return archive.settings.scrape_archive_dir
 
 
@@ -56,10 +46,6 @@ class TestStoring:
         assert list(day.glob("*.gz")), "the body is archived"
 
     def test_the_body_is_stored_compressed(self, archive_dir):
-        """A run of wien_gv_at alone is ~110 MB of HTML, and it compresses ~10:1.
-
-        Uncompressed, a fortnight's retention would be gigabytes.
-        """
         stored = archive.store(payload(body=b"x" * 10_000), source="events_at")
 
         assert stored is not None
@@ -67,12 +53,6 @@ class TestStoring:
         assert gzip.decompress(stored.read_bytes()) == b"x" * 10_000
 
     def test_the_day_is_the_day_the_run_fetched_it_in_vienna(self, archive_dir):
-        """Vienna's calendar, like every other window a scrape reckons in.
-
-        22:30 UTC in September is already tomorrow in Vienna. Filing in UTC
-        would expire the archive on a boundary nothing else in the scrape
-        observes.
-        """
         before_midnight = archive.store(
             payload(fetched_at=dt.datetime(2026, 9, 27, 21, 30, tzinfo=dt.UTC)),
             source="events_at",
@@ -89,19 +69,12 @@ class TestStoring:
         assert after_midnight.parent.name == "2026-09-28"
 
     def test_archiving_the_same_payload_twice_keeps_one_copy(self, archive_dir):
-        """A run re-fetching a URL is not two documents worth keeping."""
         archive.store(payload(), source="events_at")
         archive.store(payload(), source="events_at")
 
         assert len(list((archive_dir / "events_at" / "2026-09-27").glob("*.gz"))) == 1
 
     def test_a_later_run_does_not_overwrite_what_an_earlier_one_saw(self, archive_dir):
-        """The scrape runs hourly, and this is the whole point of the archive.
-
-        Named after where it came from, each run would overwrite the last and
-        the 14:00 document that broke a parser would be gone by 15:00 - exactly
-        the document somebody goes looking for.
-        """
         archive.store(
             payload(
                 body=b"<html>the good one</html>",
@@ -124,8 +97,6 @@ class TestStoring:
         }
 
     def test_a_page_that_did_not_change_costs_one_copy(self, archive_dir):
-        """Content-addressed, so twenty-four identical hourly fetches are one
-        document. That is what keeps the archive affordable."""
         for hour in range(6):
             archive.store(
                 payload(fetched_at=dt.datetime(2026, 9, 27, hour, tzinfo=dt.UTC)),
@@ -135,11 +106,6 @@ class TestStoring:
         assert len(list(archive.payloads_for("events_at"))) == 1
 
     def test_one_url_fetched_with_different_meta_is_two_documents(self, archive_dir):
-        """meinbezirk asks one path per day, and the day is only in the meta.
-
-        Keyed on the URL alone, each day's page would overwrite the last and the
-        archive would hold one day of a sixty-day window.
-        """
         archive.store(payload(meta={"date": "2026-08-15"}), source="meinbezirk")
         archive.store(payload(meta={"date": "2026-08-16"}), source="meinbezirk")
 
@@ -149,21 +115,10 @@ class TestStoring:
     def test_a_source_whose_name_would_escape_the_archive_writes_nothing(
         self, archive_dir
     ):
-        """A Source's name reaches the filesystem, and it is free text.
-
-        `SPEC.name` is whatever a Source says it is, so an unusable one is a
-        mistake in that Source - it must cost the evidence, not the run. So:
-        refused, nothing written, and no exception for the scrape to trip over.
-        """
         assert archive.store(payload(), source="../../etc") is None
         assert not archive_dir.exists()
 
     def test_a_failed_write_does_not_stop_the_run(self, archive_dir, monkeypatch):
-        """The archive is evidence, not the product.
-
-        A full disk must cost the evidence and nothing else - it must not fail a
-        Source that fetched and parsed perfectly well.
-        """
 
         def explode(*args, **kwargs):
             raise OSError("no space left on device")
@@ -200,20 +155,12 @@ class TestReadingBack:
         assert list(archive.payloads_for("never_scraped")) == []
 
     def test_a_body_with_no_sidecar_is_skipped(self, archive_dir):
-        """Half a write is not a payload: without the sidecar there is no kind
-        and no meta, and a parse handed the wrong kind yields silence."""
         stored = archive.store(payload(), source="events_at")
         stored.with_suffix(".json").unlink()
 
         assert list(archive.payloads_for("events_at")) == []
 
     def test_a_meinbezirk_parse_replays_off_the_archive(self, archive_dir):
-        """The whole point, on a Source whose parse needs its meta.
-
-        meinbezirk reads the queried day out of the payload's meta - there is no
-        year in the cards - so a replay that lost the meta would yield nothing
-        while looking like a parser that had broken.
-        """
         original = RawPayload(
             url="https://www.meinbezirk.at/event/wien/list",
             body=(FIXTURES / "meinbezirk" / "listing-2026-08-15.html").read_bytes(),
@@ -229,7 +176,6 @@ class TestReadingBack:
         ]
 
     def test_a_wien_gv_at_parse_replays_off_the_archive(self, archive_dir):
-        """The same, for a Source whose meta carries its coordinates."""
         meta = json.loads((FIXTURES / "wien_gv_at" / "detail-meta.json").read_text())
         original = RawPayload(
             url="https://www.wien.gv.at/veranstaltungen/20-jahre-palart",
@@ -268,13 +214,6 @@ class TestExpiring:
         assert kept == ["2026-09-20", "2026-09-27"]
 
     def test_the_retention_counts_days_available_including_today(self, archive_dir):
-        """Retention of 14 leaves fourteen days to look at, today being one.
-
-        From the 27th that reaches back to the 14th; the 13th is the fifteenth
-        day and goes. Worth pinning, because off by one here is the difference
-        between a fortnight of evidence and a fortnight minus the day someone
-        needs.
-        """
         self._archive_on(dt.date(2026, 9, 14))
         self._archive_on(dt.date(2026, 9, 13))
 
@@ -291,7 +230,6 @@ class TestExpiring:
         assert archive.prune(retention_days=14, today=dt.date(2026, 9, 27)) == 2
 
     def test_something_that_is_not_a_day_is_left_alone(self, archive_dir):
-        """Pruning deletes directories, so it only touches what it recognises."""
         stray = archive_dir / "events_at" / "notes"
         stray.mkdir(parents=True)
 
@@ -302,11 +240,6 @@ class TestExpiring:
         assert archive.prune(retention_days=14, today=dt.date(2026, 9, 27)) == 0
 
     def test_a_kind_that_is_not_fit_for_a_filename_is_flattened(self, archive_dir):
-        """A payload's kind is free text a Source chooses, and it names a file.
-
-        Unlike a Source's name it only labels the file, so an awkward one is
-        worth flattening rather than refusing the evidence over.
-        """
         stored = archive.store(payload(kind="Detail Page/v2"), source="events_at")
 
         assert stored is not None
@@ -315,8 +248,6 @@ class TestExpiring:
 
 
 class _TwoPageSource:
-    """A Source that yields two payloads and never touches the network."""
-
     SPEC = SourceSpec(name="stub_archived", delay_seconds=0.0)
 
     def __init__(self, *, parse_raises: bool = False) -> None:
@@ -343,9 +274,6 @@ class _TwoPageSource:
 
 
 class TestWhatAScrapeArchives:
-    """`_collect` is the seam: it is where a run turns payloads into Listings,
-    and it needs no database to exercise."""
-
     @staticmethod
     def _context() -> FetchContext:
         return FetchContext(
@@ -362,10 +290,6 @@ class TestWhatAScrapeArchives:
         assert len(list(archive.payloads_for("stub_archived"))) == 2
 
     def test_a_payload_that_breaks_the_parser_is_archived_anyway(self, archive_dir):
-        """The one document most worth keeping is the one that just failed.
-
-        Archiving after parsing would lose exactly the payload someone needs.
-        """
         listings, error = service._collect(
             _TwoPageSource(parse_raises=True), self._context()
         )
@@ -375,8 +299,6 @@ class TestWhatAScrapeArchives:
         assert len(list(archive.payloads_for("stub_archived"))) == 2
 
     def test_what_was_archived_parses_back_to_the_same_listings(self, archive_dir):
-        """Compared as a set: a payload is named by what it is, so the archive
-        gives them back in a stable order that is not the order they arrived."""
         source = _TwoPageSource()
         live, _ = service._collect(source, self._context())
 
@@ -391,8 +313,6 @@ class TestWhatAScrapeArchives:
 
 
 class TestReplaying:
-    """The archive made reachable: `python -m app.modules.events.replay <source>`."""
-
     def _archive_a_meinbezirk_day(self) -> None:
         archive.store(
             RawPayload(
@@ -427,8 +347,6 @@ class TestReplaying:
     def test_one_broken_document_does_not_end_the_replay(
         self, archive_dir, monkeypatch
     ):
-        """A replay exists to find every payload that breaks a parser, not the
-        first one - that is the difference between one loop and twenty."""
         self._archive_a_meinbezirk_day()
         archive.store(
             RawPayload(
@@ -453,7 +371,6 @@ class TestReplaying:
         assert replay.replay("meinbezirk") == []
 
     def test_it_reaches_no_database_and_no_network(self):
-        """It is a debugging tool over saved documents, and must stay one."""
         text = pathlib.Path(replay.__file__).read_text()
         for forbidden in ("sqlalchemy", "Session", "HttpClient", "requests"):
             assert forbidden not in text

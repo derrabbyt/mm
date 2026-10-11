@@ -4,9 +4,6 @@ import { map, Observable } from 'rxjs';
 import { Position } from '../../open-api/model/position';
 import { environment } from '../../../environments/environment';
 
-/** Raw Photon feature properties. Every field is optional - a reverse lookup on
- *  a building returns street/housenumber and no name, a place search returns a
- *  name and often no housenumber. */
 export interface PhotonProperties {
   osm_id?: number;
   osm_type?: string;
@@ -35,20 +32,15 @@ interface PhotonFeatureCollection {
   features: PhotonFeature[];
 }
 
-/** A Photon hit, normalised so callers never touch GeoJSON's [lon, lat] order. */
 export interface PhotonPlace {
-  /** Stable-ish key for template tracking; Photon has no id of its own. */
   key: string;
-  /** One line fit for a dropdown row, e.g. "Stephansplatz 4". */
   label: string;
-  /** The administrative tail, e.g. "1010 Wien, Osterreich". */
   context: string;
   position: Position;
   properties: PhotonProperties;
 }
 
 export interface SearchOptions {
-  /** Biases results towards this point - Photon ranks by distance from it. */
   near?: Position | null;
   limit?: number;
   lang?: string;
@@ -57,8 +49,6 @@ export interface SearchOptions {
 function buildLabel(properties: PhotonProperties): string {
   const street = [properties.street, properties.housenumber].filter(Boolean).join(' ');
 
-  // A named POI leads with its name and keeps the street as a qualifier;
-  // a plain address has no name and leads with the street itself.
   if (properties.name && street && properties.name !== properties.street) {
     return `${properties.name}, ${street}`;
   }
@@ -104,7 +94,6 @@ export class PhotonService {
       .pipe(map((collection) => collection.features.map(toPlace)));
   }
 
-  /** Nearest addressable thing to a coordinate, or null if Photon knows none. */
   reverse(
     position: Position,
     options: Omit<SearchOptions, 'near'> = {},

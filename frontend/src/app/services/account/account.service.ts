@@ -11,8 +11,6 @@ export class AccountService {
   private readonly _account = signal<AccountRead | null>(null);
   readonly account = this._account.asReadonly();
 
-  /** Fetches (creating on first login) the backend account for the signed-in
-   * Supabase user, and stores it. Call once a session exists. */
   load() {
     this.api.getMyAccount().subscribe((account) => this._account.set(account));
   }

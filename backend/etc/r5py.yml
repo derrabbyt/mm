@@ -1,8 +1,3 @@
-# The routing engine's configuration, read from /etc/r5py.yml while it is being
-# imported. It is here rather than on a command line because both settings have
-# to be in force before the engine starts a JVM, and because the job that uses
-# it takes no arguments of its own.
-#
 # r5-classpath: the engine resolves its class path at import time and downloads
 # a 64 MB jar if it cannot find one. Containers on this host cannot resolve
 # hostnames at all, so the jar is in the image and named here. It also puts the

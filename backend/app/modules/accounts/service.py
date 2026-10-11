@@ -38,9 +38,6 @@ def _extract_profile(
 
 
 def get_or_create_account(db: Session, identity: SupabaseIdentity) -> Account:
-    """First login creates the account. Later logins refresh email/providers/last_seen_at
-    but never touch display_name or avatar_url - see Account.profile_customized for why.
-    """
     display_name, avatar_url, providers, metadata = _extract_profile(identity.claims)
 
     return repository.upsert_account(
