@@ -1,5 +1,3 @@
-"""The HTTP shell: which modules are exposed over the API."""
-
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis_fastapi import FastAPIRedis
@@ -13,8 +11,6 @@ from ..modules.events.router import router as events_router
 from ..modules.meetups.router import router as meetups_router
 from ..modules.rendezvous.router import router as rendezvous_router
 
-# Rendezvous and events are sub-resources of a meetup, but live in their own
-# modules - so the nesting is assembled here rather than by those modules.
 MEETUP = "/api/meetups/{meetup_id}"
 
 

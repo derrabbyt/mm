@@ -19,19 +19,10 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# The schemas this project owns. `None` is how Alembic names the connection's
-# default schema, which is `public` here; PostGIS's own tiger, tiger_data and
-# topology schemas are on the search path but are not ours to migrate.
 OWNED_SCHEMAS = frozenset({None, "public", CONTENT_SCHEMA})
 
 
 def include_name(name: str | None, type_: str, parent_names: dict[str, Any]) -> bool:
-    """Restrict autogenerate to the schemas this project owns.
-
-    `include_schemas` makes Alembic reflect every schema in the database rather
-    than just the default one, which is what lets it see `content` - and also
-    what would otherwise let it see PostGIS's.
-    """
     if type_ == "schema":
         return name in OWNED_SCHEMAS
     return True
@@ -40,11 +31,6 @@ def include_name(name: str | None, type_: str, parent_names: dict[str, Any]) -> 
 def include_object(
     object: SchemaItem, name: str | None, type_: str, reflected: bool, compare_to: Any
 ) -> bool:
-    """Hide PostGIS's own table from autogenerate.
-
-    `spatial_ref_sys` is a real table in `public`, installed by the extension,
-    so filtering by schema does not reach it.
-    """
     return not (type_ == "table" and name == "spatial_ref_sys")
 
 

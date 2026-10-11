@@ -1,26 +1,3 @@
-"""goodnight.at - a Vienna city magazine. The best per-Listing data of the set.
-
-Clean undocumented JSON API found in the site's own JS bundle (the page itself is
-Alpine.js and server-renders nothing). Statamic's generic `/api/collections/*`
-routes are disabled; only these hand-rolled endpoints work.
-
-`days` has no cap and past dates work, so one call covers the whole window.
-`limit`/`page` are ignored - the endpoint is unpaginated.
-
-The trap: an item with `one_off_location: true` carries `address: []` - an empty
-**list**, not a dict. Type-checking it is required, or every real address reads
-as missing, which is exactly the bug that made this Source look address-less at
-first.
-
-Linked-location events include a Google Place ID, the strongest cross-source
-reconciliation key available anywhere in this project.
-
-**No `image_url`, deliberately.** The list endpoint carries no image field of any
-kind - the site renders each entry as a colour block (`color_dark` /
-`color_light`), not a photo. Artwork would mean one detail request per item,
-which is not worth it for a field the Source does not itself display.
-"""
-
 import datetime as dt
 import json
 from collections.abc import Iterator
@@ -54,7 +31,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
 
 
 def _address(location: dict[str, Any]) -> dict[str, Any]:
-    """Normalise the address, tolerating the empty-list form."""
     address = location.get("address")
     return address if isinstance(address, dict) else {}
 
@@ -72,8 +48,6 @@ def _time(value: str | None) -> dt.time | None:
 def parse(payload: RawPayload) -> Iterator[RawListing]:
     data = json.loads(payload.text)
 
-    # The same item repeats under every day it spans; emit it once with its
-    # full span rather than once per bucket.
     seen: set[str] = set()
 
     for bucket in data.get("data") or []:
@@ -108,7 +82,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
                 else:
                     end = end_date if end_date != start_date else None
             else:
-                # No clock time means all-day. Never fabricate 00:00.
                 start = start_date
                 end = end_date
 
@@ -125,7 +98,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
                 source_ref=str(event_id),
                 occurrences=[RawOccurrence(start=start, end=end)],
                 url=f"{BASE}/events/{slug}" if slug else None,
-                # Outbound link to the organiser/ticket page: a dedup key.
                 origin_url=item.get("event_link"),
                 title=item.get("title"),
                 description=item.get("teaser_text"),

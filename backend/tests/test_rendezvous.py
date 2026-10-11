@@ -1,8 +1,3 @@
-"""The travel-time calculation, exercised without a database.
-
-Builds `ParticipantInfo` values by hand and calls `compute_rendezvous` directly.
-"""
-
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -24,19 +19,13 @@ VIENNA = ZoneInfo("Europe/Vienna")
 
 
 def participant(cell_id: int, mode: TravelMode = TravelMode.WALK, name: str = "Ada"):
-    """Someone standing in the middle of a real cell of the loaded dataset."""
     return ParticipantInfo(
         id=uuid.uuid4(), name=name, travel_mode=mode, position=dataset.position(cell_id)
     )
 
 
 def at(day: int, hour: int) -> datetime:
-    """A local datetime in August 2026: the 3rd is a Monday, so day 8 is a
-    Saturday and day 9 a Sunday."""
     return datetime(2026, 8, day, hour, 0, tzinfo=VIENNA)
-
-
-# --- picking the matrix -------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -55,8 +44,6 @@ def test_transit_key_follows_the_day_and_hour(day, hour, expected):
 
 
 def test_after_midnight_falls_back_to_the_late_evening_bake():
-    """00:30 is 2.5h from the 22:00 bake and 7.5h from the 08:00 one, so it
-    has to wrap around the clock rather than round up to morning."""
     assert pick_transit_key(at(5, 0).replace(minute=30)) == "transit_wed22"
 
 
@@ -65,22 +52,14 @@ def test_a_naive_datetime_is_read_as_already_local():
     assert pick_transit_key(naive) == "transit_wed18"
 
 
-# --- choosing the cell --------------------------------------------------
-
-
 def test_best_cell_minimises_the_worst_traveller():
-    # cell 1 is better for the pair even though cell 0 suits the first person.
     times = np.array([[10, 30], [90, 40]], dtype=np.uint16)
     assert _best_cell(times) == 1
 
 
 def test_ties_on_the_worst_traveller_are_broken_by_total_time():
-    # both cells have a worst of 50; the second has the smaller sum.
     times = np.array([[50, 50], [40, 20]], dtype=np.uint16)
     assert _best_cell(times) == 1
-
-
-# --- the whole calculation ----------------------------------------------
 
 
 def test_everyone_in_one_place_meets_there():
@@ -123,7 +102,6 @@ def test_a_participant_outside_the_grid_is_named():
         id=uuid.uuid4(),
         name="Barbara",
         travel_mode=TravelMode.WALK,
-        # Null Island: comfortably outside any Vienna bake.
         position=dataset.position(0).model_copy(
             update={"latitude": 0.0, "longitude": 0.0}
         ),
@@ -134,9 +112,6 @@ def test_a_participant_outside_the_grid_is_named():
 
 
 def test_unreachable_pair_reports_who_is_stranded_and_the_horizon():
-    """Two walkers at opposite corners of the grid cannot meet inside the
-    walk matrix's horizon, so the error has to name them rather than return
-    an arbitrary cell."""
     people = [
         participant(0, TravelMode.WALK, name="Ada"),
         participant(dataset.n_cells - 1, TravelMode.WALK, name="Grace"),
@@ -147,6 +122,4 @@ def test_unreachable_pair_reports_who_is_stranded_and_the_horizon():
         assert exc.message.startswith("No spot is within")
         assert "Ada" in exc.message or "Grace" in exc.message
     else:
-        # A grid small enough that the corners are mutually reachable is a
-        # valid dataset too; then the answer just has to be a real one.
         assert result.worst_seconds > 0

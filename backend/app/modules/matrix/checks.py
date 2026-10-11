@@ -1,14 +1,3 @@
-"""Two reasons to refuse a Dataset that is shaped exactly right.
-
-Everything the format can say about a Dataset is about its shape, and both
-failures here produce a Dataset of perfect shape: thirteen matrices, the right
-dtype, the right dimensions, a manifest that validates. What is wrong is the
-content, and in both cases it is wrong in a way nobody would have questioned.
-
-Pure functions over a built Dataset, run before it is published. Neither needs
-a bake to exercise, which is the point - three hours and a JVM is not a test.
-"""
-
 import logging
 from collections.abc import Mapping
 
@@ -30,7 +19,6 @@ class DatasetRejected(Exception):
 
 
 def coverage_pct(matrix: np.ndarray) -> float:
-    """Share of origin/destination pairs that have a route at all."""
     return 100.0 * float((np.asarray(matrix) != UNREACHABLE).sum()) / matrix.size
 
 
@@ -40,18 +28,6 @@ def check_transit_coverage(
     *,
     floor_pct: float,
 ) -> None:
-    """Refuse a Dataset whose transit matrices reach almost nothing.
-
-    This is what a Departure outside the transit feed's validity window looks
-    like from the outside: the router finds no service, every pair comes back
-    unreachable, and the bake writes matrices in which nothing can be got to by
-    public transport. Neither the writer nor the reader could tell that from a
-    city with poor transit, so there is a floor and it is a deployment setting.
-
-    Measured here rather than read from the manifest's own `coverage_pct`: a
-    bake that got this wrong would have written that number from the same
-    arrays, so trusting it would be asking the suspect for an alibi.
-    """
     for departure in DEPARTURES:
         key = departure.matrix_key
         entry = metadata.manifest.matrices[key]
@@ -66,15 +42,6 @@ def check_transit_coverage(
 
 
 def check_saturday_differs_from_sunday(matrices: Mapping[str, np.ndarray]) -> None:
-    """Refuse a Dataset whose Saturday matrices are its Sunday ones.
-
-    A Saturday Departure that lands on a public holiday is routed against the
-    Sunday timetable, and the two matrices come out byte-identical. Cheap to
-    check and it would have caught the defect in the shipped Dataset on the day
-    it was introduced: Wiener Linien's own feed defines 34 Saturday-only and 38
-    Sunday-only service patterns and runs 15% more trips on a Saturday, so two
-    identical matrices are never the truth about the city.
-    """
     sundays = {
         departure.hour: departure.matrix_key
         for departure in departures_of(DayClass.SUNDAY)

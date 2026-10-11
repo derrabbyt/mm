@@ -1,17 +1,3 @@
-"""resident_advisor - electronic music, through an open GraphQL API.
-
-The HTML pages are Cloudflare-blocked (403), but the GraphQL endpoint is
-unauthenticated with introspection enabled, and answers on both `ra.co` and
-`de.ra.co`.
-
-**Use `eventListings`, not `events`.** The `events` root field advertises
-tempting `areaId` / `dateFrom` / `dateTo` arguments and returns **0 for every
-`type` except `TODAY`** - an hour was lost to that during research.
-`eventListings` is what the site itself calls, and it works.
-
-Vienna is area **450** (`area(areaUrlName:"vienna", countryUrlCode:"at")`).
-"""
-
 import json
 from collections.abc import Iterator
 from typing import Any
@@ -99,9 +85,6 @@ def _listings(data: Any) -> dict[str, Any]:
 def parse(payload: RawPayload) -> Iterator[RawListing]:
     data = json.loads(payload.text)
     if data.get("errors"):
-        # Yielding nothing rather than raising: the run records the resulting
-        # zero against the Source, which is the signal someone acts on. Raising
-        # here would report a parse failure for what is an upstream refusal.
         return
 
     for item in _listings(data).get("data") or []:
@@ -112,9 +95,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
         start = parse_iso_datetime(event.get("startTime"))
         if start is None:
-            # Fall back to the listing date. It is day-level, published as a
-            # midnight timestamp, so it becomes an all-day Occurrence rather
-            # than a happening that starts at 00:00.
             day = day_if_midnight(
                 parse_iso_when(item.get("listingDate") or event.get("date"))
             )
@@ -147,8 +127,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             venue_name=venue.get("name"),
             city="Wien",
             country="AT",
-            # Genres are the Source's own taxonomy; "Party" anchors the
-            # canonical mapping for the many events that list none.
             categories_raw=genres + ["Party"],
             organizer=artists[0] if artists else None,
             image_url=_image(event),
@@ -156,13 +134,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
 
 def _image(event: dict[str, Any]) -> str | None:
-    """The flyer, preferring its front.
-
-    The `flyerFront` scalar reads as the obvious field and is null on every
-    Vienna event checked; the same picture is served through `images` tagged
-    FLYERFRONT. Prefer that tag, but take any image over none - the back of a
-    flyer still beats a blank card.
-    """
     images = [
         one
         for one in event.get("images") or []

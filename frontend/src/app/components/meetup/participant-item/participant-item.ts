@@ -23,8 +23,6 @@ export interface ParticipantEdit {
 export interface ParticipantLocation {
   id: string;
   position: Position;
-  /** Only set when the user picked a named place; otherwise the name is
-   *  reverse geocoded from the coordinates. */
   label?: string;
 }
 
@@ -37,16 +35,13 @@ export interface ParticipantLocation {
 export class ParticipantItem {
   readonly participant = input.required<MeetupParticipantRead>();
   readonly selected = input(false);
-  /** Biases address results towards the meetup's area. */
   readonly near = input<Position | null>(null);
-  /** Name of the current position, kept in the UI - the API stores coordinates. */
   readonly addressLabel = input<string | null>(null);
 
   readonly selectRequested = output<string>();
   readonly save = output<ParticipantEdit>();
   readonly locationPicked = output<ParticipantLocation>();
 
-  /** Progress or failure of the last "Use my location", null when idle. */
   readonly geoStatus = signal<string | null>(null);
 
   readonly travelModes = Object.values(TravelMode);
@@ -82,7 +77,6 @@ export class ParticipantItem {
     });
   }
 
-  /** Whoever is at the browser, assigned to this participant. */
   useMyLocation() {
     if (!navigator.geolocation) {
       this.geoStatus.set('This browser has no geolocation');
@@ -98,8 +92,6 @@ export class ParticipantItem {
           position: { latitude: coords.latitude, longitude: coords.longitude },
         });
       },
-      // Denied permission is the common case here, so say so rather than
-      // leaving the button looking like it did nothing.
       (error) => this.geoStatus.set(error.message || 'Could not get your location'),
     );
   }

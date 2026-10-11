@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Put the routing engine's jar where the matrix image expects it.
-#
-# 64 MB, so it is gitignored rather than committed, and it is in the image
-# rather than fetched by the job: the engine downloads it while being imported
-# if it cannot find one, and the containers that would do the downloading have
-# no name resolution. Run this once on a machine that does have it, before
-# `docker compose build bake-matrices`.
-#
 # The URL and the digest are the ones the engine itself pins, in
 # r5py/util/classpath.py - keep them in step with the r5py version in
 # pyproject.toml's `matrix` group.
@@ -25,7 +17,6 @@ if [ -f "vendor/${JAR}" ] && echo "${SHA256}  vendor/${JAR}" | sha256sum --check
     exit 0
 fi
 
-# A machine that has run the engine already has it; save the download.
 CACHED="${XDG_CACHE_HOME:-${HOME}/.cache}/r5py/${JAR}"
 if [ -f "${CACHED}" ]; then
     echo "copying ${CACHED}"

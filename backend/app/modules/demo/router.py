@@ -44,7 +44,6 @@ async def test_endpoint(data: TestDataRequest) -> TestDataResponse:
     return {"calculated_value": rnd, "status": "success 1234"}
 
 
-# sse
 @router.get(
     "/sse",
     operation_id="sseEndpoint",
@@ -63,12 +62,10 @@ async def sse_endpoint() -> AsyncIterable[Item]:
             await asyncio.sleep(1)
 
 
-# redis chaching
 @router.get("/expensive/{item_id}", dependencies=[Depends(cache(ttl=30))])
 async def expensive(item_id: int):
     logger.debug("Actually executing endpoint for %s", item_id)
 
-    # Pretend this is an expensive DB/API call.
     await asyncio.sleep(2)
 
     return {
@@ -77,7 +74,6 @@ async def expensive(item_id: int):
     }
 
 
-# rq
 @router.post("/jobs/{item_id}")
 async def create_job(item_id: int):
     job = queue.enqueue(

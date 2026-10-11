@@ -1,8 +1,3 @@
-"""Every SQLAlchemy statement the accounts module runs.
-
-`SQLAlchemyError` never leaves this file.
-"""
-
 import logging
 import uuid
 from typing import Any
@@ -28,11 +23,6 @@ def upsert_account(
     providers: list[str],
     auth_metadata: dict[str, Any],
 ) -> Account:
-    """Insert the account, or refresh the volatile columns of the existing row.
-
-    `display_name` and `avatar_url` are supplied for the insert but absent from
-    the update on purpose - see `Account.profile_customized`.
-    """
     insert_statement = insert(Account).values(
         supabase_user_id=supabase_user_id,
         email=email,

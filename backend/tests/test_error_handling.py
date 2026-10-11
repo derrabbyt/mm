@@ -46,8 +46,6 @@ def _boom() -> OperationalError:
 
 
 class BoomSession:
-    """A DB session where every operation fails at the connection level."""
-
     def __getattr__(self, _name):
         def _fail(*args, **kwargs):
             raise _boom()
@@ -67,13 +65,6 @@ class _Scalars:
 
 
 class MeetupFoundThenBoomSession:
-    """Resolves the meetup fine, then fails on the participant work.
-
-    Mirrors losing the connection partway through a request: without this the
-    session would already blow up on the ownership check and every participant
-    failure would surface as a meetup error instead of its own.
-    """
-
     def __init__(self, meetup, existing: MeetupParticipant | None = None):
         self._meetup = meetup
         self._existing = existing
@@ -115,9 +106,6 @@ def _meetup_payload() -> dict:
     }
 
 
-# --- exception classes ------------------------------------------------------
-
-
 def test_not_found_is_a_client_error():
     exc = ParticipantNotFoundError(participant_id="42")
     assert exc.status == 404
@@ -134,7 +122,6 @@ def test_missing_meetup_is_a_client_error():
 
 @pytest.mark.parametrize("error", STORAGE_ERRORS)
 def test_storage_errors_are_503(error):
-    """A storage outage is our fault, and retrying the same request may succeed."""
     assert error.status == 503
     assert issubclass(error, AppBaseException)
 
@@ -144,15 +131,11 @@ def test_error_codes_are_unique():
     assert len(codes) == len(set(codes))
 
 
-# --- responses() ------------------------------------------------------------
-
-
 def test_responses_keys_by_status():
     assert set(responses(ParticipantNotFoundError, ParticipantLoadError)) == {404, 503}
 
 
 def test_responses_discriminates_same_status_errors_on_error():
-    """Same-status errors become a union tagged by `error`, each keeping its schema."""
     from pydantic import TypeAdapter
 
     adapter = TypeAdapter(
@@ -183,13 +166,9 @@ def test_responses_uses_the_bare_model_for_a_lone_error():
 
 
 def test_error_schema_names_are_unique():
-    """Two exceptions sharing a __name__ would silently collide in the schema."""
     errors = [*NOT_FOUND_ERRORS, *STORAGE_ERRORS]
     names = [e.model().__name__ for e in errors]
     assert len(names) == len(set(names))
-
-
-# --- service layer ----------------------------------------------------------
 
 
 def test_get_participant_raises_not_found_for_missing_id(db, meetup, account):
@@ -205,7 +184,6 @@ def test_update_participant_raises_not_found_for_missing_id(db, meetup, account)
 
 
 def test_get_participant_rejects_a_malformed_id_as_not_found(db, meetup, account):
-    """A non-UUID id is just as absent as an unknown one - same 404, not a 500."""
     with pytest.raises(ParticipantNotFoundError):
         meetups.get_participant(db, str(meetup.id), "not-a-uuid", account.id)
 
@@ -220,11 +198,7 @@ def test_malformed_meetup_id_reads_as_not_found(db, account):
         meetups.get_participants(db, "not-a-uuid", account.id)
 
 
-# --- ownership --------------------------------------------------------------
-
-
 def test_another_accounts_meetup_is_not_found(db, meetup):
-    """Not 403: an unrelated account must not learn that the id exists."""
     stranger_id = uuid.uuid4()
     with pytest.raises(MeetupNotFoundError):
         meetups.get_meetup(db, str(meetup.id), stranger_id)
@@ -242,9 +216,6 @@ def test_participants_of_another_accounts_meetup_are_not_found(db, meetup, accou
 def test_get_meetups_only_returns_your_own(db, meetup, account):
     assert [m.id for m in meetups.get_meetups(db, account.id)] == [meetup.id]
     assert meetups.get_meetups(db, uuid.uuid4()) == []
-
-
-# --- service layer translates infrastructure failures -----------------------
 
 
 def test_get_meetups_translates_db_failure():
@@ -311,9 +282,6 @@ def test_update_participant_translates_db_failure(meetup, account):
         )
 
 
-# --- the linked account is changeable ---------------------------------------
-
-
 def _second_account(db) -> uuid.UUID:
     other = Account(
         id=uuid.uuid4(), supabase_user_id=uuid.uuid4(), display_name="Grace"
@@ -368,7 +336,6 @@ def test_a_linked_account_can_be_swapped(db, meetup, account):
 
 
 def test_omitting_the_account_unlinks_it(db, meetup, account):
-    """PUT is a full replace, so a caller that drops account_id clears it."""
     added = meetups.add_participant(
         db,
         str(meetup.id),
@@ -383,7 +350,6 @@ def test_omitting_the_account_unlinks_it(db, meetup, account):
 
 
 def test_linking_an_unknown_account_on_update_is_a_404(db, meetup, account):
-    """A dangling foreign key is the caller's mistake, not a storage outage."""
     added = meetups.add_participant(
         db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
     )
@@ -499,9 +465,6 @@ def test_omitting_the_position_clears_it(db, meetup, account):
     assert cleared.position is None
 
 
-# --- service layer round trip -----------------------------------------------
-
-
 def test_participant_starts_unplaced_and_can_be_placed(db, meetup, account):
     added = meetups.add_participant(
         db, str(meetup.id), account.id, AddParticipantRequest(name="Ada")
@@ -513,9 +476,6 @@ def test_participant_starts_unplaced_and_can_be_placed(db, meetup, account):
         db, str(meetup.id), str(added.id), account.id, _update_request()
     )
     assert placed.position == Position(latitude=48.2, longitude=16.4)
-
-
-# --- HTTP surface -----------------------------------------------------------
 
 
 async def test_missing_meetup_returns_404(client):
@@ -585,7 +545,7 @@ async def test_validation_error_uses_the_envelope(client):
 
     body = resp.json()
     assert body["error"] == "validation_error"
-    assert "detail" not in body  # FastAPI's own shape must not leak through
+    assert "detail" not in body
     locations = {tuple(d["location"]) for d in body["details"]}
     assert ("body", "name") in locations
     assert ("body", "location") in locations
@@ -593,7 +553,6 @@ async def test_validation_error_uses_the_envelope(client):
 
 
 async def test_validation_error_reports_every_bad_field(client, meetup):
-    """Reshaping into our envelope must not lose which fields failed."""
     resp = await client.put(
         f"/api/meetups/{meetup.id}/participants/{uuid.uuid4()}",
         json={"position": {"latitude": "not-a-number"}},
@@ -656,15 +615,11 @@ async def test_placing_a_participant_round_trips_over_http(client, meetup):
     assert placed.json()["travel_mode"] == "walk"
 
 
-# --- OpenAPI ----------------------------------------------------------------
-
 PARTICIPANTS = "/api/meetups/{meetup_id}/participants"
 PARTICIPANT = "/api/meetups/{meetup_id}/participants/{participant_id}"
 
 
 def _error_schemas(schema, path, method, status) -> set[str]:
-    """Schema names documented for one response, whether it is a lone $ref or
-    a discriminated union of several errors sharing the status."""
     body = schema["paths"][path][method]["responses"][status]["content"][
         "application/json"
     ]["schema"]
@@ -697,11 +652,6 @@ async def test_openapi_documents_each_error(client, path, method, status, schema
 
 
 async def test_openapi_uses_a_discriminated_oneof_for_shared_statuses(client):
-    """PUT raises several different 503s.
-
-    oneOf + discriminator is what makes the generator emit a real TS union; a
-    bare anyOf silently collapses to its first branch and loses the other codes.
-    """
     schema = (await client.get("/api/openapi.json")).json()
     body = schema["paths"][PARTICIPANT]["put"]["responses"]["503"]["content"][
         "application/json"
@@ -726,10 +676,6 @@ async def test_openapi_uses_a_discriminated_oneof_for_shared_statuses(client):
 
 
 async def test_no_error_response_uses_an_untagged_union(client):
-    """An untagged anyOf collapses to one branch in the generated client.
-
-    Every multi-variant error response must be a discriminated oneOf instead.
-    """
     schema = (await client.get("/api/openapi.json")).json()
 
     for path, operations in schema["paths"].items():
@@ -745,7 +691,6 @@ async def test_no_error_response_uses_an_untagged_union(client):
 
 
 async def test_openapi_pins_error_code_as_a_const(client):
-    """The const is what makes the generated client a string enum."""
     schema = (await client.get("/api/openapi.json")).json()
     model = schema["components"]["schemas"]["ParticipantNotFoundError"]
 
@@ -753,13 +698,6 @@ async def test_openapi_pins_error_code_as_a_const(client):
 
 
 async def test_every_route_documents_the_envelope_for_422(client):
-    """The 422 handler is overridden, so no route may still promise FastAPI's shape.
-
-    Set once at router level via default_responses(); this catches a new router
-    that forgets it. A route declaring its own 422 replaces that entry outright,
-    so it has to list ValidationError alongside them - which is what the union
-    branch below checks.
-    """
     schema = (await client.get("/api/openapi.json")).json()
 
     for path, operations in schema["paths"].items():
@@ -775,7 +713,6 @@ async def test_every_route_documents_the_envelope_for_422(client):
 
 
 async def test_every_participant_route_requires_a_bearer_token(client):
-    """The generated client only sends the token where security is declared."""
     schema = (await client.get("/api/openapi.json")).json()
 
     for path in ("/api/meetups", "/api/meetups/{meetup_id}", PARTICIPANTS, PARTICIPANT):

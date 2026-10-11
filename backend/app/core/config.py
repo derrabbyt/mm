@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", extra="ignore")
     log_level: str = "INFO"
 
-    # Every unspecified variable is required in .env
     postgres_host: str
     postgres_port: int
     postgres_db: str
@@ -46,57 +45,18 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_jwt_audience: str = "authenticated"
 
-    # The Dataset the rendezvous calculation reads, and the folder the bake
-    # publishes into. One directory, because publication is an atomic rename of
-    # the manifest inside it - see ADR 0006.
     dataset_dir: Path = BACKEND_DIR / "app" / "data" / "output_dev" / "vienna_v2_h3r9"
 
-    # What the bake routes over. Paths rather than anything it fetches: the
-    # geodata job is what puts an extract and a feed in shared storage, and the
-    # bake reads them from wherever it is told, so that job being unwritten does
-    # not stop this one running against a directory somebody filled by hand.
     matrix_osm_path: Path = BACKEND_DIR / "data" / "geodata" / "vienna.osm.pbf"
     matrix_gtfs_path: Path = BACKEND_DIR / "data" / "geodata" / "wl.zip"
 
-    # The share of cell pairs a transit matrix has to reach before the bake will
-    # publish it. A deployment setting because it is a property of the city and
-    # the ceiling, not of the code: Vienna's 90-minute transit matrices reach
-    # about 22% of pairs over a bbox that runs well past the network, while a
-    # Departure that found no timetable at all reaches 0%. The floor only has to
-    # separate those two, and sits low on purpose - it is there to catch a
-    # collapse, not to grade a city.
     matrix_min_transit_coverage_pct: float = Field(default=10.0, ge=0.0, le=100.0)
 
-    # How far ahead and behind a scrape asks each Source for. Deployment
-    # settings, unlike a Source's rate limit or its locales - those are
-    # knowledge about the site and live in that Source's own spec.
     scrape_days_ahead: int = 60
     scrape_days_back: int = 7
-    # The shared read timeout. A Source that needs longer says so in its spec:
-    # wien.gv.at server-generates a ~490 KB index and takes ~32s to hand it over.
     scrape_timeout_seconds: float = 30.0
-    # The most of one Source's Listings a single run may retire; above it the run
-    # retires nothing for that Source. Why that is worth guarding is at the guard
-    # itself. 0.6 is the 40% volume-drop rule the scraper alerted on, read from
-    # the other side: a run keeping under 40% of what a Source had was already
-    # the number somebody was expected to look at.
-    #
-    # Bounded, because it is a share and the failure is silent in one direction:
-    # somebody typing 60 for "60%" would otherwise switch the guard off and
-    # nothing would say so until a Source emptied itself.
     scrape_max_retired_share: float = Field(default=0.6, ge=0.0, le=1.0)
 
-    # Where every fetched payload is kept, and for how long. Evidence rather
-    # than data: a parser that starts producing nonsense is fixed against the
-    # document that broke it, and by the time anyone looks the site has moved
-    # on. Local disk on purpose - object storage is the eventual home.
-    #
-    # Retention is a deployment setting because the disk is. A payload is
-    # stored under a digest of itself, so an hourly run costs nothing for a page
-    # that did not change and one copy for one that did - a first run of all
-    # twenty-one Sources is on the order of 20 MB compressed and a day of
-    # re-runs adds only what actually moved. Whoever sized the volume is the one
-    # who knows how many days of that fit.
     scrape_archive_dir: Path = BACKEND_DIR / "data" / "archive"
     scrape_archive_retention_days: int = Field(default=14, ge=1)
 
@@ -107,30 +67,14 @@ class Settings(BaseSettings):
     # delay is zero and asking several questions per address is free.
     geocoder_url: str = "http://127.0.0.1:2322/api"
     geocoder_delay_seconds: float = 0.0
-    # Off turns the scrape into a pure scrape: addresses are still stored, so
-    # nothing has to be re-scraped when it goes back on.
     geocoder_enabled: bool = True
 
     @property
     def app_database_url(self) -> str:
-        """The application's own database, whatever the current process points at.
-
-        The suite points `database_url` at a database of its own, so a test that
-        wants to know "is this the real one?" has to have something to compare
-        against. Assembled from the POSTGRES_* values, which the suite leaves
-        alone.
-        """
         return self._dsn(self.postgres_user, self.postgres_password)
 
     @property
     def scraper_configured(self) -> bool:
-        """Whether the job's connection is something other than the application's.
-
-        Asked of the assembled URL rather than of the password, because either
-        can configure it: a deployment that sets `SCRAPER_DATABASE_URL` outright
-        is as isolated as one that sets a password, and keying on the password
-        would have it warned at every run that it is not.
-        """
         return self.scraper_database_url != self.database_url
 
     @property
@@ -152,18 +96,6 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _assemble_database_urls(self) -> Self:
-        """Both connections, in one place because the second derives from the
-        first - as two validators they would depend on declaration order to be
-        correct, which is not something to leave implicit.
-
-        The job's is its own role where a password is configured and the
-        application's where none is. Falling back to the application beats
-        falling back to a role that cannot log in; the job saying which it got
-        is what keeps the fallback from passing for the real thing. Same host,
-        port and database either way: this separates who connects, not what
-        they connect to, because a foreign key still has to cross from `public`
-        to `content`.
-        """
         if not self.database_url:
             self.database_url = self._dsn(self.postgres_user, self.postgres_password)
         if not self.scraper_database_url:

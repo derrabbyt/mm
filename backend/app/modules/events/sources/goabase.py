@@ -1,40 +1,3 @@
-"""goabase - psytrance and goa parties. The smallest, cleanest API of the set.
-
-    GET https://www.goabase.net/api/party/json/?country=AT
-
-Note the **`/json/` path segment** - without it the same path returns HTML.
-`limit`, `page` and `dateFrom` are all silently ignored, so one call returns the
-complete upcoming set for the country (~25 for AT), some of it a year or more
-out. `page=2` returning 0 confirms there is nothing more to page to.
-
-Nothing here honours `FetchContext`'s date window, because there is no request
-to put it in and `parse` must stay pure - filtering on "today" here would make
-this a different function every day and the fixture tests untestable. What is
-plausible is normalisation's job, and its window is deliberately the wider one:
-asking a site for sixty days is not the same as refusing to store a run that
-lasts longer than that.
-
-Dates are full ISO with an offset, and coordinates are present but **coarse**:
-every Vienna party reports 48.2 / 16.3, the city centroid rather than the Venue.
-Those are deliberately dropped - a fake pin in the middle of town is worse for
-"what is on near here" than no pin at all.
-
-Which leaves nothing to geocode from, because **the list has no venue and no
-address either**. The party's own `urlPartyJsonLD` does: a schema.org `Place`
-with a name, usually a street, and sometimes an `Offer`. So there is a second
-stage, one small request per party, and it is what makes this Source's Listings
-findable at all rather than stored and invisible.
-
-Not `urlPartyJson`, which is the same record as the list plus a `textLocation`
-field that is **empty on every Vienna party**; the venue, when the organiser
-bothered, is buried in the free-text line-up. The JSON-LD is the same fact,
-structured.
-
-About a third of the feed names its venue `Party Place`, which is the site's
-placeholder for "not saying". That is dropped rather than stored - geocoding
-the words would put a party wherever Photon makes of them.
-"""
-
 import json
 import logging
 from collections.abc import Iterator
@@ -72,7 +35,6 @@ MIN_COORD_DECIMALS = 3
 logger = logging.getLogger(__name__)
 
 
-# The site's placeholder for a venue the organiser did not name.
 PLACEHOLDER_VENUE = "party place"
 
 
@@ -80,8 +42,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
     response = ctx.http.get(ENDPOINT, headers={"Accept": "application/json"})
     yield RawPayload(url=response.url, body=response.body, kind="partylist")
 
-    # One request per Vienna party, for the venue the list does not carry. The
-    # whole country is ~25 parties, so this is small enough not to need a cap.
     for item in json.loads(response.text).get("partylist") or []:
         if not region.is_vienna(city=item.get("nameTown")):
             continue
@@ -91,15 +51,8 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
         try:
             detail = ctx.http.get(url, headers={"Accept": "application/ld+json"})
         except FetchError as exc:
-            # A party delisted between the two requests costs its venue, not
-            # the Listing - the list has already been yielded.
             logger.warning("goabase: no detail for %s (%s)", url, exc)
             continue
-        # The list item rides along, so the detail can yield a *complete*
-        # Listing. Both payloads carry the same source_ref and the detail is
-        # parsed second, so it upserts over the list's - and anything the list
-        # knew that the JSON-LD does not (the organiser, the party type, the
-        # Facebook link) would be lost if it were not passed on.
         yield RawPayload(
             url=detail.url, body=detail.body, kind="party", meta={"party": item}
         )
@@ -111,7 +64,6 @@ def _decimals(value: float) -> int:
 
 
 def _coords(item: dict[str, Any]) -> tuple[float | None, float | None]:
-    """Coordinates, but only when they are precise enough to be a Venue."""
     try:
         lat = float(item.get("geoLat"))  # type: ignore[arg-type]
         lon = float(item.get("geoLon"))  # type: ignore[arg-type]
@@ -125,7 +77,6 @@ def _coords(item: dict[str, Any]) -> tuple[float | None, float | None]:
 
 
 def _from_list_item(item: dict[str, Any]) -> RawListing | None:
-    """The Listing the party list alone can describe."""
     party_id = item.get("id")
     start = parse_iso_datetime(item.get("dateStart"))
     if not party_id or start is None:
@@ -158,12 +109,6 @@ def _from_list_item(item: dict[str, Any]) -> RawListing | None:
 
 
 def _venue(node: dict[str, Any]) -> dict[str, Any]:
-    """The Place, with the placeholder name dropped but its address kept.
-
-    Only the *name* is a placeholder. Six of seventeen parties calling their
-    venue "Party Place" still give a real street, and throwing the address away
-    with the name would leave them unplaceable for no reason.
-    """
     place = node.get("location") or {}
     name = (place.get("name") or "").strip()
     address = place.get("address") or {}
@@ -176,7 +121,6 @@ def _venue(node: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_detail(payload: RawPayload) -> Iterator[RawListing]:
-    """One party, enriched with what its own JSON-LD adds to the list entry."""
     node = json.loads(payload.text)
     item = payload.meta.get("party") or {}
 

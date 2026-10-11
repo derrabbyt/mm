@@ -1,18 +1,3 @@
-"""Turn a `RawListing` into a `NormalizedListing`, or quarantine it.
-
-Three outcomes, never a silent drop:
-
-* **valid** - stored as it is
-* **repaired** - a fixable problem was fixed and recorded in `warnings`
-* **invalid** - returned as a `Rejected` and quarantined with the raw record
-
-The valid/quarantined ratio per Source doubles as a health signal, which is why
-a rejection carries a machine-readable `reason`.
-
-Values in, values out: no session, and nothing here reaches the network, so a
-wrong repair can be reproduced from the record that caused it.
-"""
-
 import datetime as dt
 import re
 import unicodedata
@@ -33,19 +18,13 @@ from .scraped import (
 TZ = ZoneInfo(VIENNA_TZ)
 UTC = dt.UTC
 
-# An occurrence outside this window is almost certainly a parse error (a
-# mis-inferred year, or a template date leaking through) rather than real data.
 MAX_DAYS_AHEAD = 365 * 2
 MAX_DAYS_BACK = 30
 
-# Beyond this, expanding a range into per-day rows is pointless: it is a museum
-# run or a permanent installation, not something with a per-day identity. Kept as
-# a single range row; the day query filters on duration_days instead.
 _SANE_MAX_SPAN_DAYS = 400
 
 _WS = re.compile(r"\s+")
 _PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
-# Marketing prefixes that appear on some Sources and defeat title matching.
 _TITLE_NOISE = re.compile(
     r"^(pick of the day|tipp|tip|neu|new|abgesagt|cancelled|canceled)\s*[:!|–-]\s*",
     re.IGNORECASE,
@@ -53,18 +32,12 @@ _TITLE_NOISE = re.compile(
 
 
 def clean_text(value: str | None) -> str | None:
-    """Collapse whitespace and strip; return None for empty."""
     if value is None:
         return None
     out = _WS.sub(" ", str(value)).strip()
     return out or None
 
 
-# Stock artwork served in place of a real one. Storing it is worse than storing
-# nothing: the consumer cannot tell it apart from a genuine image, so every
-# Listing on the Source renders the same handful of pictures. Observed as both a
-# directory (meetup serves /images/fallbacks/… for 100% of its JSON-LD `image`
-# fields) and a filename (bandsintown's placeholder-artist.svg, on 84 Listings).
 _IMAGE_PLACEHOLDER = re.compile(
     r"/(?:fallbacks?|placeholders?|default[-_]?images?|no[-_]image)s?/"
     r"|/(?:placeholder|default|no[-_]image|blank|dummy)[-_.]",
@@ -77,16 +50,6 @@ _NEEDS_QUOTING = re.compile(r"[^\w\-./:@&=+$,~%?#\[\]!*'()]")
 def clean_image_url(
     value: str | None, base: str | None = None, warnings: list[str] | None = None
 ) -> str | None:
-    """Absolutize a scraped image URL, or drop it if it is not usable.
-
-    Sources publish images in three shapes and only the first is directly
-    storable: absolute (`https://…`), protocol-relative (`//images.…`, from
-    songkick) and site-relative (`/bilder/thumb_1.jpg`, from eventfinder and
-    meinbezirk). The latter two are resolved against the page they came from,
-    since a relative path is meaningless to a consumer reading the database.
-    Anything left that is not http(s) - `data:` blobs, `javascript:` - is
-    dropped, as are known placeholders.
-    """
     if not value:
         return None
     url = str(value).strip()
@@ -122,12 +85,6 @@ def clean_image_url(
 
 
 def norm_key(value: str | None) -> str | None:
-    """Casefolded, accent-stripped, punctuation-free form for dedup keys.
-
-    `Das Werk` / `dasWERK` and `Gleis19` / `Gleis 19` were observed as the
-    same Venue across Sources, so Venue and title keys need aggressive
-    normalisation to be useful to the deferred matcher.
-    """
     if not value:
         return None
     text = _TITLE_NOISE.sub("", str(value))
@@ -139,7 +96,6 @@ def norm_key(value: str | None) -> str | None:
 
 
 def _as_local(value: dt.datetime) -> dt.datetime:
-    """Attach Vienna time to a naive datetime; convert an aware one."""
     if value.tzinfo is None:
         return value.replace(tzinfo=TZ)
     return value.astimezone(TZ)
@@ -148,15 +104,9 @@ def _as_local(value: dt.datetime) -> dt.datetime:
 def normalize_occurrence(
     raw: RawOccurrence, warnings: list[str]
 ) -> NormalizedOccurrence | None:
-    """Resolve one raw occurrence into stored form.
-
-    Returns None when the occurrence is unusable (caller decides whether the
-    whole Listing is then invalid).
-    """
     start = raw.start
     end = raw.end
 
-    # A plain `date` (not datetime) is the Source saying "time unknown".
     all_day = isinstance(start, dt.date) and not isinstance(start, dt.datetime)
 
     if all_day:
@@ -181,9 +131,6 @@ def normalize_occurrence(
             else:
                 end_local = dt.datetime.combine(end, dt.time(23, 59), tzinfo=TZ)
             if end_local < start_local:
-                # A club night listed 23:00–01:00 means the end is the next
-                # morning. Roll it forward only if that yields a sane duration;
-                # otherwise the end is simply wrong and gets dropped.
                 rolled = end_local + dt.timedelta(days=1)
                 if dt.timedelta(0) <= (rolled - start_local) <= dt.timedelta(hours=18):
                     end_local = rolled
@@ -202,7 +149,6 @@ def normalize_occurrence(
             end_local = None
             span_days = 0
 
-    # After-midnight starts belong to the previous evening's programme too.
     night_of: dt.date | None = None
     if not all_day and start_local.hour < NIGHT_CUTOFF_HOUR:
         night_of = date_local - dt.timedelta(days=1)
@@ -220,14 +166,6 @@ def normalize_occurrence(
 
 
 def _in_window(occ: NormalizedOccurrence, today: dt.date) -> bool:
-    """Does this occurrence *overlap* the acceptable window?
-
-    Testing the start date alone was wrong: a year-long exhibition that opened in
-    January is running today, but its start is ~200 days in the past, so it was
-    quarantined as out-of-window. That silently discarded most long runs -
-    austria.info lost 12 of 16 Listings to it, and wien.info/wien.gv.at lost
-    occurrences the same way.
-    """
     window_start = today - dt.timedelta(days=MAX_DAYS_BACK)
     window_end = today + dt.timedelta(days=MAX_DAYS_AHEAD)
     occ_start = occ.date_local
@@ -238,9 +176,6 @@ def _in_window(occ: NormalizedOccurrence, today: dt.date) -> bool:
 def normalize(
     raw: RawListing, source: str, today: dt.date | None = None
 ) -> NormalizedListing | Rejected:
-    """Normalise one parsed record, or return a Rejected explaining why not."""
-    # Vienna's calendar day, not the host's: the window is a local-calendar
-    # window, and Occurrences are dated by the Venue's own calendar.
     today = today or dt.datetime.now(TZ).date()
     warnings: list[str] = []
 
@@ -254,7 +189,6 @@ def normalize(
             raw=raw.model_dump(mode="json"),
         )
     if not title:
-        # Only the alternate locale had a title; promote it.
         title, title_alt = title_alt, None
         warnings.append("primary-locale title missing; used alternate")
 
@@ -294,8 +228,6 @@ def normalize(
 
     occurrences.sort(key=lambda o: o.start_utc)
 
-    # Language columns: map (lang, lang_alt) onto explicit de/en fields so the
-    # site can pick with a fallback and a later translation pass can backfill.
     titles: dict[str, str | None] = {"de": None, "en": None}
     descriptions: dict[str, str | None] = {"de": None, "en": None}
     titles[raw.lang] = title
@@ -304,8 +236,6 @@ def normalize(
         titles[raw.lang_alt] = title_alt
         descriptions[raw.lang_alt] = clean_text(raw.description_alt)
 
-    # Austria's bounding box, generously. Catches swapped lat/lon and sentinel
-    # zeros, both of which were observed in upstream data.
     lat, lon = raw.lat, raw.lon
     if (
         lat is not None
@@ -351,8 +281,6 @@ def normalize(
         geo_source="source" if lat is not None else "none",
         geo_precision="exact" if lat is not None else None,
         categories_raw=[c for c in (clean_text(c) for c in raw.categories_raw) if c],
-        # The title is the fallback for Sources that publish no taxonomy at
-        # all. Deliberately not the description - see to_canonical.
         category=to_canonical(raw.categories_raw, fallback_text=title),
         price_min=price_min,
         price_max=price_max,

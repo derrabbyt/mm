@@ -1,11 +1,3 @@
-"""Run one job and exit.
-
-    python -m app.jobs.runner scrape-events
-
-`--every` adds a sleep loop so a compose container can stand in for a scheduler
-locally; production runs the same command without it.
-"""
-
 import argparse
 import logging
 import sys
@@ -33,8 +25,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 def run_once(name: str) -> bool:
-    """Run `name`, returning whether it succeeded. Never raises: a job that
-    blows up must not take an `--every` loop down with it."""
     job = load(name)
     started = time.monotonic()
     logger.info("Job %s starting", name)

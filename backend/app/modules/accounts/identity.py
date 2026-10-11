@@ -22,9 +22,6 @@ BearerCredentials = Annotated[
 
 
 class SupabaseIdentity(BaseModel):
-    """A verified JWT's claims - proof of who's asking, not a database row.
-    Rebuilt from scratch on every request; see Account for the persisted row."""
-
     supabase_user_id: uuid.UUID
     email: str | None
     claims: dict[str, Any]

@@ -1,26 +1,3 @@
-"""Scraping the catalogue, and reading what is on near a point on a day.
-
-Three steps, in order. A scrape fills the catalogue with Listings, one record
-per Source. A rebuild groups each day's Listings into Events, so a happening
-five Sources listed is one thing rather than five. The read serves those
-Events.
-
-The rebuild runs once, after every Source has been scraped, and not inside the
-per-Source loop: a duplicate only becomes visible when *both* Sources have been
-ingested, so nothing about grouping can be decided while one Source is being
-processed.
-
-The scrape is orchestration only. Everything it decides is decided elsewhere: a
-Source knows how to fetch and parse itself, `normalize.py` decides what is
-storable, and `repository.py` owns the SQL. What is left here is the order of
-those steps, and the rules about when a step may run at all. One is about
-carrying on - a Source that fails never stops the others - and the rest are about
-retiring, because removing a Listing is the only thing a run does that a person
-could notice going wrong: a run that could not fetch never retires anything, a
-run that would retire an implausible share of one Source retires nothing for it,
-and only one run happens at a time.
-"""
-
 import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -53,8 +30,6 @@ DEFAULT_LIMIT = 20
 
 
 def _first(*candidates: str | None) -> str | None:
-    """First candidate with something in it - Sources yield blanks as often as
-    NULLs, and an empty title is worse than a missing one."""
     for candidate in candidates:
         if candidate and candidate.strip():
             return candidate.strip()
@@ -62,15 +37,10 @@ def _first(*candidates: str | None) -> str | None:
 
 
 def _localised(lang_primary: str, de: str | None, en: str | None) -> str | None:
-    """The side of a de/en pair that `lang_primary` names, falling back to the
-    other because a handful of rows disagree with their own lang_primary."""
     return _first(en, de) if lang_primary == "en" else _first(de, en)
 
 
 def _address(street: str | None, postcode: str | None, city: str | None) -> str | None:
-    """`Stephansplatz 3, 1010 Wien`, or None when there is no street to build
-    on - roughly 40% of geocoded Listings. Returning a bare "Wien" instead would
-    look like a real answer and stop the caller from geocoding a better one."""
     street = _first(street)
     if street is None:
         return None
@@ -87,14 +57,6 @@ def get_events_near(
     radius_meters: int = DEFAULT_RADIUS_METERS,
     limit: int = DEFAULT_LIMIT,
 ) -> list[EventRead]:
-    """What is on for `day` within `radius_meters` of `position`, nearest first.
-
-    One entry per real-world happening, whichever Sources listed it - the
-    grouping is a run's work, already done, and this only reads it.
-
-    `day` must be the Venue's local calendar day, not the UTC one - Occurrences
-    are dated by the local calendar.
-    """
     rows = repository.find_events_near(
         db,
         latitude=position.latitude,
@@ -123,8 +85,6 @@ def _to_schema(
         description=_localised(
             event.lang_primary, event.description_de, event.description_en
         ),
-        # origin_url is null for about 70% of Listings, and an entry with no
-        # link at all is worse than one pointing at the Source's own page.
         origin_url=_first(event.origin_url, event.url),
         image_url=_first(event.image_url),
         venue_name=_first(event.venue_name_raw),
@@ -137,12 +97,6 @@ def _to_schema(
 def _candidate(
     listing: Listing, day: date, all_day: bool, completeness: int
 ) -> dedup.Candidate:
-    """One Listing on one day, as the matcher sees it.
-
-    `completeness` is not a matching signal - it decides which member of a
-    group the Event reads as, so leaving it at zero makes that the Source's
-    name in alphabetical order.
-    """
     return dedup.Candidate(
         listing_id=listing.id,
         source=listing.source,
@@ -159,7 +113,6 @@ def _candidate(
 
 
 def _content(listing: Listing, *, completeness: int) -> dedup.Content:
-    """One Listing's share of an Event."""
     return dedup.Content(
         listing_id=listing.id,
         source=listing.source,
@@ -187,11 +140,6 @@ def _position(listing: Listing) -> Position | None:
 
 
 def _completeness(listing: Listing, all_day: bool, end_known: bool) -> int:
-    """How much usable content a Listing carries, in the matcher's terms.
-
-    The mapping from columns to what each one is worth lives here rather than
-    in `dedup.py`: the weights are a matching rule, the columns are ours.
-    """
     return dedup.completeness_score(
         positioned=listing.lat is not None and listing.lon is not None,
         street=bool(listing.street),
@@ -210,13 +158,6 @@ def _built(
     contents: dict[int, dedup.Content],
     durations: dict[int, int],
 ) -> BuiltEvent | None:
-    """One group as a storable Event, or None if nobody could place it.
-
-    A group no Source gave a position for is dropped rather than stored: the
-    read filters on distance from a Rendezvous, so an Event with no position
-    could never be returned to anyone. The Listings stay, and the run after the
-    geocoder places one of them builds the Event.
-    """
     primary = group.primary
     merged = dedup.gap_fill(
         contents[primary.listing_id],
@@ -230,8 +171,6 @@ def _built(
         return None
 
     return BuiltEvent(
-        # The date is already a column of its own; the key only has to say
-        # which Listing this group is named after.
         group_key=f"{merged.source}:{merged.listing_id}",
         date_local=group.date_local,
         duration_days=max(durations[member.listing_id] for member in group.members),
@@ -256,7 +195,6 @@ def _built(
 
 
 def rebuild_day(db: Session, day: date, *, run_id: str) -> int:
-    """Group one day's Listings into Events. Returns how many were written."""
     rows = repository.day_candidates(db, day)
 
     candidates: list[dedup.Candidate] = []
@@ -280,14 +218,6 @@ def rebuild_day(db: Session, day: date, *, run_id: str) -> int:
 def rebuild_events(
     db: Session, *, run_id: str | None = None, today: date | None = None
 ) -> int:
-    """Rebuild the Events of every day the catalogue still covers.
-
-    Every day rather than only the days a run touched: a rule change has to
-    reach the whole catalogue without a re-scrape, and a Listing retired by
-    this run has to leave the Events of days nothing else changed. The pass is
-    idempotent - the same Listings produce the same Events - so running it
-    again is a no-op rather than a second set of rows.
-    """
     run_id = run_id or new_run_id()
     today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
     since = today - timedelta(days=settings.scrape_days_back)
@@ -295,7 +225,6 @@ def rebuild_events(
     days = repository.days_to_rebuild(db, since=since, until=until)
 
     total = sum(rebuild_day(db, day, run_id=run_id) for day in days)
-    # Whatever this run did not write is a group that no longer exists.
     dropped = repository.drop_events_not_built_by(db, run_id, since=since, until=until)
     logger.info(
         "rebuilt %d event(s) over %d day(s), dropped %d", total, len(days), dropped
@@ -304,7 +233,6 @@ def rebuild_events(
 
 
 def new_run_id() -> str:
-    """A name for one scrape, stamped so runs sort chronologically."""
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return f"{stamp}-{uuid.uuid4().hex[:6]}"
 
@@ -318,12 +246,6 @@ def _client_for(source: Source) -> HttpClient:
 
 
 def _collect(source: Source, ctx: FetchContext) -> tuple[list[RawListing], str | None]:
-    """Fetch and parse one Source. Returns what it yielded and what went wrong.
-
-    A fetch that raises is reported, not re-raised: one site being down must not
-    cost the other twenty their run. A single payload that will not parse is
-    narrower still - it costs that document and nothing else.
-    """
     name = source.SPEC.name
     try:
         payloads = list(source.fetch(ctx))
@@ -334,8 +256,6 @@ def _collect(source: Source, ctx: FetchContext) -> tuple[list[RawListing], str |
     listings: list[RawListing] = []
 
     for payload in payloads:
-        # Archived before it is parsed, deliberately. The payload worth keeping
-        # most is the one about to blow the parser up.
         archive.store(payload, source=name)
         try:
             listings.extend(source.parse(payload))
@@ -346,16 +266,6 @@ def _collect(source: Source, ctx: FetchContext) -> tuple[list[RawListing], str |
 
 
 def _positioned(listing: NormalizedListing, locate: Locate | None) -> NormalizedListing:
-    """The Listing with a position, if it needs one and its address allows it.
-
-    Most Sources publish no coordinates at all, and a Listing without them cannot
-    be found near a Rendezvous, because the read filters on distance. Geocoding
-    is reached as a capability passed in rather than as an import: this layer
-    holds the session, so it is not allowed to know the geocoding module exists.
-
-    A Listing that already carries a position keeps it. The Source saw the
-    happening; the geocoder is only guessing from words.
-    """
     if locate is None or listing.lat is not None:
         return listing
 
@@ -374,9 +284,6 @@ def _positioned(listing: NormalizedListing, locate: Locate | None) -> Normalized
             "lat": located.position.latitude,
             "lon": located.position.longitude,
             "geo_source": "geocoded",
-            # What the geocoder actually worked out, not a flat guess: a house
-            # number and a district are both "a position" and only one is worth
-            # much to a query about what is nearby.
             "geo_precision": located.precision,
         }
     )
@@ -385,34 +292,11 @@ def _positioned(listing: NormalizedListing, locate: Locate | None) -> Normalized
 def _retire_unless_collapsed(
     db: Session, source: str, run_id: str, *, since: date, until: date
 ) -> int:
-    """Retire the Listings this run did not see, unless implausibly many of them.
-
-    A site that changed its markup, or served one page of the twenty it had,
-    looks from here exactly like a site that cancelled almost everything. The
-    share is what tells them apart: a Source does not lose most of its programme
-    between two runs, so a run that would retire more than
-    `scrape_max_retired_share` of one retires nothing for it and says so loudly.
-
-    Each Source is judged on its own counts, so one broken site costs only its
-    own retirements rather than the whole run's. See
-    docs/adr/0004-a-run-is-guarded-by-a-lock-and-a-volume-floor.md for the
-    thresholds and for what this knowingly costs.
-
-    `since` and `until` are the window this run asked the Source for, and the
-    share is taken over the Listings showing in it - the programme this run could
-    have contradicted. That is also what lets a Source recover: a site that
-    really did shrink goes on being refused while the Listings it dropped are
-    still dated inside the window, and once their dates pass they stop counting
-    against it and the next run retires them. Measured against the Source's whole
-    history instead, one breach would refuse every retirement it ever made again.
-    """
     live, unseen = repository.listing_counts(
         db, source, run_id, since=since, until=until
     )
     share = unseen / live if live else 0.0
     if share > settings.scrape_max_retired_share:
-        # ERROR rather than WARNING: a real collapse wants somebody looking at
-        # the Source, and no threshold can tell that from a broken parser.
         logger.error(
             "%s: refusing to retire %d of %d Listing(s) - %.0f%% is over the %.0f%% "
             "a run may retire, so the Source looks broken rather than empty",
@@ -434,8 +318,6 @@ def scrape_source(
     today: date,
     locate: Locate | None = None,
 ) -> SourceRunStats:
-    """Fetch, parse, normalise and store one Source. Never raises for its own
-    failures - they are recorded against the run instead."""
     spec = source.SPEC
     started = datetime.now(UTC)
 
@@ -458,9 +340,6 @@ def scrape_source(
         else:
             storable.append(result)
 
-    # A write that fails is not survivable the way a fetch that fails is: it
-    # means the database, not the site, so it stops the run rather than being
-    # recorded and stepped over.
     occurrences = 0
     placed = 0
     for listing in storable:
@@ -498,7 +377,6 @@ def scrape_source(
         occurrences_count=occurrences,
         error=error,
     )
-    # Commits this Source's transaction - see the repository.
     repository.record_source_run(db, stats)
 
     logger.info(
@@ -519,24 +397,6 @@ def scrape_source(
 def scrape(
     db: Session, *, today: date | None = None, locate: Locate | None = None
 ) -> ScrapeOutcome:
-    """Scrape every Source, one after another.
-
-    Sequential on purpose: twenty-one Sources at polite delays is still only
-    minutes, it keeps the log readable, and it avoids being a burst of load on
-    anyone. A Source that needs concurrency for detail pages does it inside its
-    own `fetch`.
-
-    One run at a time, and a run that finds another in progress declines rather
-    than joining it. What says a Listing is still real is the run that last saw
-    it, so a second run stamping its own id retires the first run's Listings
-    underneath it - and the first then does the same back. A fifteen-to-
-    twenty-five-minute job on an hourly schedule makes that a matter of one slow
-    run, not of a misconfiguration.
-
-    `locate` resolves an address to a position. Without one, a Listing whose
-    Source published no coordinates is stored anyway and simply cannot be found
-    near a Rendezvous - the address is kept, so a later run can still place it.
-    """
     with repository.scrape_lock(db) as acquired:
         if not acquired:
             return ScrapeOutcome(declined="another run is already in progress")
@@ -545,15 +405,8 @@ def scrape(
         discovered = sources.discover()
         logger.info("Run %s starting over %d source(s)", run_id, len(discovered))
 
-        # Vienna's calendar day. The window a Source is asked for, and the window
-        # normalisation accepts, are both local-calendar windows.
         today = today or datetime.now(ZoneInfo(VIENNA_TZ)).date()
 
-        # Before fetching, not after: this run is about to write a day's worth
-        # of payloads, and a run that fails part way through should still have
-        # made room for them. The scrape is the only thing that writes to the
-        # archive and it is the thing on a schedule, so expiring here is what
-        # keeps the archive bounded without a second scheduled job to forget.
         archive.prune(
             retention_days=settings.scrape_archive_retention_days, today=today
         )
@@ -562,7 +415,5 @@ def scrape(
             for source in discovered.values()
         ]
 
-        # Last, and over every Source at once: two Sources describing the same
-        # happening are only visible as one once both have been stored.
         rebuild_events(db, run_id=run_id, today=today)
         return ScrapeOutcome(sources=stats)

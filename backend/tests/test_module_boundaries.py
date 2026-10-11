@@ -1,10 +1,3 @@
-"""The module boundary rules from docs/architecture.md, as tests.
-
-1. Modules reach each other only through `public.py`.
-2. Layers that hold a `Session` may not import another module at all -
-   composition belongs in `router.py`.
-"""
-
 import ast
 import pathlib
 
@@ -12,23 +5,14 @@ import pytest
 
 MODULES_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "modules"
 
-# Recursive: a rule that only checked a module's top level would be escaped by
-# putting the offending import one directory deeper.
 SOURCE_FILES = sorted(MODULES_DIR.glob("*/**/*.py"))
 
 
 def _owner(path: pathlib.Path) -> str:
-    """The module a file belongs to, however deeply nested inside it."""
     return path.relative_to(MODULES_DIR).parts[0]
 
 
 def _imported_targets(tree: ast.AST, package: list[str]) -> list[str]:
-    """Every module this file imports, as an absolute dotted path.
-
-    Relative imports are resolved against `package`, the dotted path of the
-    folder the file sits in - `from ..meetups import public` inside
-    `app/modules/rendezvous` resolves to `app.modules.meetups.public`.
-    """
     targets: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -36,20 +20,15 @@ def _imported_targets(tree: ast.AST, package: list[str]) -> list[str]:
         elif isinstance(node, ast.ImportFrom):
             base = package[: len(package) - node.level + 1] if node.level else []
             prefix = [*base, *(node.module.split(".") if node.module else [])]
-            # `from x import y` may name either a member or a submodule, so
-            # check both - only the submodule reading can cross a boundary.
             targets.append(".".join(prefix))
             targets.extend(".".join([*prefix, alias.name]) for alias in node.names)
     return targets
 
 
-# The layers that take a Session. None of them may know another module exists;
-# `router.py` composes on their behalf.
 DB_FACING = {"service.py", "repository.py", "models.py", "jobs.py"}
 
 
 def _crossings(path: pathlib.Path) -> list[str]:
-    """Absolute paths this file imports that belong to a *different* module."""
     owner = _owner(path)
     package = ["app", "modules", *path.relative_to(MODULES_DIR).parts[:-1]]
     targets = _imported_targets(ast.parse(path.read_text()), package)
@@ -94,7 +73,6 @@ def test_module_only_reaches_another_module_through_its_public(path: pathlib.Pat
         other = parts[2]
         if other == owner:
             continue
-        # app.modules.<other> alone is fine; it is the members that matter.
         if len(parts) >= 4 and parts[3] != "public":
             violations.append(target)
 

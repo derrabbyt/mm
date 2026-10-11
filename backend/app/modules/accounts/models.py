@@ -22,8 +22,6 @@ class Account(Base):
 
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
-    # Application-owned profile, seeded from OAuth metadata on first login and
-    # never touched by later logins
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -31,7 +29,6 @@ class Account(Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
 
-    # e.g. ["github", "google"]
     providers: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )

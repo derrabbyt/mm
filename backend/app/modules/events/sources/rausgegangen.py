@@ -1,30 +1,3 @@
-"""rausgegangen.com - Vienna listings with the best JSON-LD detail pages.
-
-Django, server-rendered, no bot protection. Two-stage: sweep the category
-listings, then fetch each detail page for its JSON-LD, which carries *exact start
-and end times*, a full `PostalAddress` and a **structured price** (`price` +
-`priceCurrency`) - the only Source here giving machine-readable prices.
-
-No date query exists: `?date=`, `?day=`, `?start_date=` and
-`?date_from/to=` are all accepted and ignored, and the `/tipps-fuer-heute/`
-style paths are editorial "tips" pages (2 events), not day listings. So we sweep
-categories and filter locally.
-
-Pagination lives on **category** pages only (`<a aria-label="Next">`); the city
-landing page has none and ignores `?page=`.
-
-**On the crawl delay, stated plainly.** Their robots.txt carries
-`Crawl-delay: 10` under a `User-agent: ClaudeBot` block. We send the shared
-client's default User-Agent, which is a Chrome string - so we are not announcing
-ourselves as ClaudeBot, but we are not identifying ourselves as anything either,
-and we cannot honestly claim that block was addressed to someone else. We use 1s
-anyway. `Crawl-delay` is not part of the robots.txt standard, and honouring 10s
-cost ~47 minutes for this one Source and forced `MAX_DETAILS` down to 120, which
-threw away two thirds of what the sweep had already found. That is the trade, and
-it is a choice rather than a deduction. Their `Disallow` rules are a different
-matter and are honoured as written.
-"""
-
 import logging
 from collections.abc import Iterator
 from typing import Any
@@ -72,15 +45,10 @@ CATEGORIES = (
     "theater",
 )
 MAX_PAGES_PER_CATEGORY = 12
-# The sweep finds ~365 distinct URLs across the 14 categories, and at 1s each the
-# whole set costs ~6 minutes. A guard rail rather than a budget: set above what
-# the site actually publishes, so it only fires if the sweep starts running away.
 MAX_DETAILS = 500
 
 
 def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
-    # The detail page's JSON-LD carries no category, but the listing that led us
-    # there does - so carry it on the payload's meta rather than losing it.
     category_of: dict[str, str] = {}
     order: list[str] = []
 
@@ -115,7 +83,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
         try:
             resp = ctx.http.get(detail_url)
         except FetchError as exc:
-            # A single dead detail page must not discard the whole crawl.
             logger.warning("rausgegangen: skipping %s (%s)", detail_url, exc)
             continue
         yield RawPayload(
@@ -127,14 +94,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
 
 
 def _price(offer: dict[str, Any]) -> tuple[float | None, str | None, bool | None]:
-    """Extract price, currency and free-ness from an Offer.
-
-    `price: "0.00"` is **not** treated as free. The site emits it as a
-    placeholder for "no price published", and it appears on obviously ticketed
-    concerts. Since a free happening and an unpriced one are indistinguishable
-    here, both become unknown: showing "free" on a paid show is a worse error
-    than showing no price at all.
-    """
     if not offer:
         return None, None, None
     raw = offer.get("price")
@@ -151,8 +110,6 @@ def _price(offer: dict[str, Any]) -> tuple[float | None, str | None, bool | None
 
 
 def parse(payload: RawPayload) -> Iterator[RawListing]:
-    # Listings exist to discover detail URLs and to be a cheap breakage signal;
-    # the structured data all comes from detail pages.
     if payload.kind != "detail":
         return
 

@@ -1,25 +1,3 @@
-"""wien.info - the official Vienna tourism calendar. The largest single Source.
-
-One unparameterised request returns the entire calendar (~841 Listings, ~74 of
-them on any given Saturday). The endpoint was found by walking the site's own
-bundle graph: `/assets/modern/core.js` names `./modules/eventsearch.ts`, whose real
-implementation lives in `filter-app` -> `apps-*.js`, which resolves
-`./configs/events/events.config.ts` -> `events.config-*.js`, and *that* file
-declares `endpoints: {de: "/ajax/de/events", en: "/ajax/en/events"}`.
-
-The `dr`/`f1` parameters in the site's URL hash are **client-side only** - the
-app downloads everything and filters in the browser, so there is nothing to pass.
-
-**Single locale only - English.** The original plan was to fetch both (one
-request each) and merge on the item `id`, but wien.info assigns *different ids
-per locale*: the same happening is `1002218` in German and `1002236` in English.
-No reliable cross-locale key exists either - the best candidate, `tags + dates`,
-matches only 51% of items unambiguously, and `imageUrl` just 21%. Fetching both
-would therefore create ~840 duplicate Listings for deduplication to clean up,
-which is precisely what the "two locales must be one Listing" rule exists to
-prevent. German titles for this Source are a follow-up.
-"""
-
 import datetime as dt
 import json
 from collections.abc import Iterator
@@ -62,16 +40,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
 
 
 def _occurrences(item: dict[str, Any]) -> list[RawOccurrence]:
-    """Build occurrences from either the explicit list or the span.
-
-    `dates` is authoritative when present and may be **gapped** - the 14th,
-    15th, 16th and then the 20th - so collapsing it into a single span would
-    falsely claim the happening runs on the days in between.
-
-    wien.info gives no clock times in the listing payload, so every Occurrence is
-    a plain `date`, which is all-day downstream. Times would need one detail
-    fetch per item, and there are 841 of them.
-    """
     out: list[RawOccurrence] = []
 
     explicit = item.get("dates") or []
@@ -121,8 +89,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
             url=url or None,
             title=item.get("title"),
             description=subtitle,
-            # English, always: fetching the German locale would double the
-            # catalogue rather than translate it - see the module docstring.
             lang="en",
             venue_name=item.get("location"),
             city="Wien",

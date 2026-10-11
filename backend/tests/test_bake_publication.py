@@ -1,10 +1,3 @@
-"""What the bake does around the three hours in the middle.
-
-Nothing here runs a bake - that is a JVM and roughly four gigabytes - but
-everything a bake does that a *reader* can observe happens in these functions:
-the grid it builds, the Dataset it refuses, and the rename that publishes one.
-"""
-
 import json
 
 import numpy as np
@@ -39,12 +32,7 @@ def manifest_of(folder):
     return fmt.read_manifest(folder / "manifest.json")
 
 
-# --- the grid -----------------------------------------------------------
-
-
 def test_the_grid_comes_out_of_the_profile_and_comes_out_the_same_every_time():
-    """Cell ids are what a Dataset's rows and columns mean, so the same profile
-    has to produce the same numbering or a rebuild renumbers the city."""
     first, second = build_grid(PROFILE), build_grid(PROFILE)
 
     assert first.n_cells > 0
@@ -75,12 +63,7 @@ def test_a_folder_holding_a_different_grid_version_is_refused(tmp_path):
         commit_grid(tmp_path, build_grid(bumped))
 
 
-# --- writing a matrix ---------------------------------------------------
-
-
 def test_a_matrix_appears_under_its_own_name_or_not_at_all(tmp_path):
-    """It is written beside the name and renamed on top, and the name a
-    manifest will point at has to be the one that ends up there."""
     matrix = np.arange(9, dtype=np.uint16).reshape(3, 3)
     path = tmp_path / "walk__abcdef123456.npy"
 
@@ -99,9 +82,6 @@ def test_nothing_is_left_behind_when_writing_a_matrix_fails(tmp_path):
     assert not list(tmp_path.iterdir())
 
 
-# --- publication --------------------------------------------------------
-
-
 def test_a_dataset_is_published_by_its_manifest_appearing(write_dataset):
     folder = write_dataset()
     manifest = manifest_of(folder)
@@ -114,9 +94,6 @@ def test_a_dataset_is_published_by_its_manifest_appearing(write_dataset):
 
 
 def test_a_dataset_failing_the_coverage_check_is_never_published(write_dataset):
-    """The previous Dataset is what the API is serving. A bad bake has to leave
-    it exactly where it is, because the alternative is a travel-time service
-    answering out of empty matrices."""
     empty = np.full((3, 3), fmt.UNREACHABLE, dtype=np.uint16)
     folder = write_dataset({"transit_wed12": empty})
     manifest = manifest_of(folder)
@@ -142,8 +119,6 @@ def test_a_dataset_failing_the_saturday_check_is_never_published(write_dataset):
 
 
 def test_a_manifest_the_reader_could_not_load_fails_here_instead(write_dataset):
-    """The whole reason the writer and the reader share one definition: the
-    Dataset is read back through it before it is published."""
     folder = write_dataset()
     manifest = manifest_of(folder)
     (folder / manifest.matrices["car"].file).unlink()

@@ -1,29 +1,3 @@
-"""warda.at - a Vienna nightlife and culture magazine.
-
-**No JSON-LD `Event` anywhere** - not on listings, not on detail pages - so this
-is pure HTML structure parsing. WordPress with a custom post type hidden from the
-REST API (`show_in_rest: false`), and the custom `warda` REST namespace exposes
-only photos, newsletter and account routes. There is an unlabelled search form
-carrying `args[search][date]` that suggests a filtered AJAX endpoint, but it was
-never confirmed, so the listing is swept and filtered locally.
-
-Detail pages are consistent, but the day and the time are in different places:
-
-    .date_bar          "Freitag 14. August 2026"        <- the day, no time
-    ul <b>Beginn:</b>  "Beginn: 23:00"                  <- the time
-    .event_place       "Babenberger Passage Burgring / Babenbergerstrasse, 1010 Wien"
-
-That split is the trap: `.date_bar` holds no time at all, so a parser reading it
-for one gets nothing and the Listing turns into an all-day entry. The time is read
-from the text after the "Beginn:" label instead, and only from there - a bare scan
-for the first clock-like number in a line will also match a date written
-`14.08.2026`, which reads as 14:08. warda writes the long German form, where that
-happens not to collide, so this is a guard rather than a live fix; the Sources
-that do use the dotted form would break on it.
-
-Dates are German long form with the year present.
-"""
-
 import datetime as dt
 import re
 from collections.abc import Iterator
@@ -80,7 +54,6 @@ def fetch(ctx: FetchContext) -> Iterator[RawPayload]:
 
 
 def _place(soup: BeautifulSoup) -> tuple[str | None, str | None, str | None]:
-    """Read `.event_place`: an `<h6>` Venue and a `<p>` address."""
     container = soup.select_one(".event_place")
     if container is None:
         return None, None, None
@@ -101,14 +74,6 @@ def _place(soup: BeautifulSoup) -> tuple[str | None, str | None, str | None]:
 
 
 def _start_time(soup: BeautifulSoup) -> dt.time | None:
-    """Find the time after the "Beginn:" label.
-
-    It lives in `<li><b>Beginn:</b> 23:00</li>`, not in `.date_bar`, so the whole
-    page is searched for the label and only the text after it is read. Reading the
-    date line instead finds no time at all, and reading a whole line without
-    splitting on the label first matches a dotted date as one - `14.08.2026`
-    yields 14:08.
-    """
     label = soup.find(string=re.compile(r"Beginn", re.IGNORECASE))
     if label is None:
         return None
@@ -127,9 +92,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
     date_bar = soup.select_one(".date_bar")
     if date_bar is None:
         return
-    # The payload's own fetch time is the reference for a year-less date, so this
-    # parse stays a pure function of the payload. warda states the year, so it
-    # only matters if the markup ever stops doing so.
     day = dates.parse_date(
         re.sub(r"\s+", " ", date_bar.get_text(" ", strip=True)),
         reference=payload.fetched_at.date(),
@@ -145,9 +107,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
 
     venue, street, postcode = _place(soup)
 
-    # Categories come from the WordPress taxonomy links. `.event_time` is NOT a
-    # category source: on a detail page it holds a *related* happening's Venue,
-    # so reading it produced Venue names as categories.
     categories = [
         anchor.get_text(" ", strip=True)
         for anchor in soup.select(
@@ -158,8 +117,6 @@ def parse(payload: RawPayload) -> Iterator[RawListing]:
     categories = list(dict.fromkeys(categories))[:6] or ["Party"]
 
     slug = payload.url.rstrip("/").rsplit("/", 1)[-1]
-    # A detail page carries exactly one <img> and it is a 1x1 analytics pixel;
-    # the flyer is a CSS background. og:image is the flyer.
     image = markup.og_image(soup)
     if image is None:
         img = soup.select_one(".event_image img[src], article img[src]")

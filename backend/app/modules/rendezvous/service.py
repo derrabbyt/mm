@@ -1,9 +1,3 @@
-"""Optimal rendezvous spots from a baked travel-time dataset.
-
-Nothing here takes a `Session` - the module owns no tables, so it is handed the
-people and the time and answers with a place.
-"""
-
 import logging
 import uuid
 from datetime import datetime
@@ -26,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 
 def _travel_times(participants: list[ParticipantInfo], transit_key: str) -> np.ndarray:
-    """(n_participants, n_cells) matrix of seconds from each person to each cell."""
     times = np.full((len(participants), dataset.n_cells), UNREACHABLE, dtype=np.uint16)
     for row, participant in zip(times, participants, strict=True):
         cell = dataset.snap(
@@ -40,11 +33,6 @@ def _travel_times(participants: list[ParticipantInfo], transit_key: str) -> np.n
 
 
 def _best_cell(times: np.ndarray) -> int:
-    """Cell minimising the worst traveller, ties broken by total travel time.
-
-    Ties are common - times are whole seconds capped at an hour - and without
-    the tiebreak `argmin` would return an arbitrary one of them.
-    """
     worst = times.max(axis=0)
     candidates = np.flatnonzero(worst == worst.min())
     totals = times[:, candidates].sum(axis=0, dtype=np.int64)
@@ -56,8 +44,6 @@ def compute_rendezvous(
     positioned: list[ParticipantInfo],
     excluded_ids: list[uuid.UUID],
 ) -> RendezvousRead:
-    """The best spot for these people at this time, and how long each of them
-    travels to reach it."""
     if not positioned:
         raise NoPositionedParticipantsError()
 

@@ -10,7 +10,6 @@ pre-commit:
       glob:
         - "*.py"
         - "**/*.py"
-      # Piped so format finishes rewriting the files before check reads them.
       group:
         piped: true
         jobs:

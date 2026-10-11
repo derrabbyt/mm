@@ -1,29 +1,3 @@
-"""Every SQLAlchemy statement the events module runs.
-
-`SQLAlchemyError` never leaves this file: the read path raises
-`EventsLoadError` and the write path `ListingWriteError`, so a service reads as
-what it does rather than as error plumbing. Two statements here are neither a
-read of the catalogue nor a write to it: `scrape_lock`, the run's own guard
-against a second run, and `listing_counts`, the read half of retiring. Both are
-SQL, so both live with the rest of it, and both answer to the write path -
-a run that cannot ask must not carry on regardless.
-
-Two surfaces, and only one of them is served. Listings and their Occurrences
-are what a scrape writes; **Events** are what a person is shown, rebuilt from
-them after every run. The read touches Listings only through an Event's
-membership, to reach the Occurrences that say when it is on.
-
-Writes are upserts keyed on `(source, source_ref)`. Every touch stamps
-`last_seen_run`, and that stamp is what says whether a row is still real:
-
-* a **Listing** the run did not touch is retired with `disappeared_at` rather
-  than deleted, because it may have been cancelled and several Sources simply
-  drop a cancelled happening from their output - the difference between
-  "cancelled" and "we failed to fetch" is worth keeping;
-* an **Occurrence** its own Listing's run did not stamp is deleted, because the
-  Listing is still there and the date simply moved.
-"""
-
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager, suppress
 from datetime import date, datetime
@@ -72,17 +46,6 @@ SCRAPE_LOCK_KEY = 8_531_002
 
 @contextmanager
 def scrape_lock(db: Session) -> Iterator[bool]:
-    """Hold the run lock for the block, or report not having got it.
-
-    Session-level rather than transaction-level. A scrape commits once per
-    Source, and a transaction-level lock would be released by the first of those
-    commits, leaving the rest of the run unguarded - which is the part of a run
-    that does the retiring.
-
-    Non-blocking on purpose: a scheduled run that queued behind its predecessor
-    would still be waiting when the scheduler fired the next one. See
-    docs/adr/0004-a-run-is-guarded-by-a-lock-and-a-volume-floor.md.
-    """
     try:
         acquired = bool(
             db.execute(select(func.pg_try_advisory_lock(SCRAPE_LOCK_KEY))).scalar_one()
@@ -94,17 +57,11 @@ def scrape_lock(db: Session) -> Iterator[bool]:
         yield acquired
     finally:
         if acquired:
-            # A session-level lock is released with its connection anyway, so
-            # failing here leaks nothing - and raising would replace whatever the
-            # run was already failing with.
             with suppress(SQLAlchemyError):
                 db.execute(select(func.pg_advisory_unlock(SCRAPE_LOCK_KEY)))
 
 
 def _distance_meters(latitude: float, longitude: float) -> ColumnElement[float]:
-    """Great-circle metres from every Event to this point. Events store plain
-    lat/lon columns rather than a geometry, so there is no spatial index to hit;
-    at a few thousand live rows the sequential scan has not been worth one."""
     return func.ST_DistanceSphere(
         func.ST_MakePoint(Event.lon, Event.lat),
         func.ST_MakePoint(longitude, latitude),
@@ -116,13 +73,6 @@ def _covers_day(
     duration_days: ColumnElement[int],
     day: date,
 ) -> ColumnElement[bool]:
-    """Does the range starting at `date_local` still include `day`?
-
-    Both Occurrences and the Events built from them carry a start and a length
-    rather than a row per day: a museum open all year is one of each, dated
-    1 January with duration_days=364, so matching the start alone hides it for
-    the other 364 days.
-    """
     return and_(date_local <= day, date_local + duration_days >= day)
 
 
@@ -136,27 +86,12 @@ def find_events_near(
     radius_meters: int,
     limit: int,
 ) -> Sequence[Row[tuple[Event, datetime, bool, float]]]:
-    """Events showing on `day` within `radius_meters` of the point, nearest first.
-
-    Each row is the Event, the start of the one Occurrence that matters,
-    whether that Occurrence is all-day, and its distance in metres.
-    """
     distance = _distance_meters(latitude, longitude)
 
-    # True when the run began before today, so it is simply open rather than
-    # starting at a particular time.
     ongoing = Occurrence.date_local < day
 
-    # When an Event is on is still its Listings' Occurrences to say, reached
-    # through the group's membership - denormalising a start time onto the
-    # Event would be a second answer to the same question. LATERAL picks the
-    # one showing that matters here: the next one that day, over every Listing
-    # the Event was built from, which is also what drops an Event with nothing
-    # on at all.
     next_occurrence = (
         select(
-            # A run that began earlier has no meaningful start time today, so
-            # report it as open all day rather than as starting in January.
             case((ongoing, cast(day, DateTime)), else_=Occurrence.start_local).label(
                 "start_local"
             ),
@@ -167,10 +102,6 @@ def find_events_near(
         .where(
             EventListing.event_id == Event.id,
             _covers_day(Occurrence.date_local, Occurrence.duration_days, day),
-            # An exhibition open all day is still worth showing at 20:00; a
-            # concert that started at 18:00 is not. All-day rows carry a
-            # midnight start that would otherwise fail this test every time,
-            # and an ongoing run's start time belongs to a previous day.
             or_(Occurrence.all_day, ongoing, Occurrence.start_utc >= not_before),
         )
         .order_by(Occurrence.start_utc)
@@ -203,13 +134,6 @@ def find_events_near(
 
 
 def days_to_rebuild(db: Session, *, since: date, until: date) -> Sequence[date]:
-    """Every local day that has a live Occurrence starting on it.
-
-    A day is named by where its Occurrences *start*, which is how a year-long
-    exhibition is still rebuilt in September: its day is 1 January, so the
-    window is tested against the whole range an Occurrence covers rather than
-    against its start alone.
-    """
     query = (
         select(Occurrence.date_local)
         .join(Listing, Listing.id == Occurrence.listing_id)
@@ -230,14 +154,6 @@ def days_to_rebuild(db: Session, *, since: date, until: date) -> Sequence[date]:
 def day_candidates(
     db: Session, day: date
 ) -> Sequence[Row[tuple[Listing, bool, int, bool]]]:
-    """Every live Listing with an Occurrence starting on `day`.
-
-    One row per Listing, not per Occurrence: a Listing can hold several
-    Occurrences on one day (eventfinder lists eight "Krimi Escape" sessions),
-    and those are genuine showtimes rather than duplicates of each other. So
-    `all_day` is aggregated with `bool_and` - a single timed showing makes the
-    day timed - and the range is the longest of them.
-    """
     query = (
         select(
             Listing,
@@ -255,10 +171,6 @@ def day_candidates(
         raise EventsLoadError() from exc
 
 
-# Every field of a BuiltEvent that is a column of its own, which is all of
-# them but the two identifying the row and the membership written beside it.
-# Derived rather than listed again: unlike a Listing, an Event has nothing a
-# run must leave alone, so a field added to one belongs in the other.
 _EVENT_KEYS = frozenset({"group_key", "date_local", "listing_ids"})
 _EVENT_COLUMNS = tuple(
     name for name in BuiltEvent.model_fields if name not in _EVENT_KEYS
@@ -268,13 +180,6 @@ _EVENT_COLUMNS = tuple(
 def write_events(
     db: Session, day: date, events: Sequence[BuiltEvent], run_id: str
 ) -> int:
-    """Store one day's Events. Returns how many were written.
-
-    Upserted on `(date_local, group_key)` rather than replaced outright, so an
-    Event keeps the id the API has already served for as long as the same
-    Listing represents it. Clearing out what this run did not write is
-    `drop_events_not_built_by`, once, at the end of the pass.
-    """
     try:
         written: list[int] = []
         members: list[dict[str, object]] = []
@@ -309,17 +214,10 @@ def write_events(
                 for listing_id in built.listing_ids
             )
 
-        # Membership is replaced wholesale: which Listings an Event was built
-        # from is decided from scratch every run, and a Listing that left the
-        # group has to stop being one of its answers to "when is this on?".
-        # In two statements for the whole day rather than two per Event, which
-        # is the difference between three round trips per Event and one.
         if written:
             db.execute(delete(EventListing).where(EventListing.event_id.in_(written)))
             db.execute(insert(EventListing), members)
 
-        # The last write of this day's transaction, so it is where it commits:
-        # a day's Events and their membership land together or not at all.
         db.commit()
     except SQLAlchemyError as exc:
         raise EventWriteError(day.isoformat()) from exc
@@ -330,17 +228,6 @@ def write_events(
 def drop_events_not_built_by(
     db: Session, run_id: str, *, since: date, until: date
 ) -> int:
-    """Delete the Events in the window that `run_id` did not write.
-
-    A whole-window sweep rather than a delete per rebuilt day, because the
-    days that need clearing are exactly the ones a per-day pass never visits:
-    retiring a Listing leaves its Occurrences in place, so a day whose last
-    Listing disappeared has no candidates to rebuild from and would go on
-    being served off the back of them.
-
-    The window is tested against the range an Event covers, not its start, so
-    a year-long exhibition is swept with everything else.
-    """
     try:
         result = db.execute(
             delete(Event).where(
@@ -386,17 +273,10 @@ _LISTING_COLUMNS = (
 
 
 def _naive(value: datetime | None) -> datetime | None:
-    """Drop the offset from a wall-clock timestamp.
-
-    `start_local` is a naive column. Handing the driver an aware datetime for it
-    would make Postgres cast through the session timezone, silently shifting the
-    very value the column exists to preserve.
-    """
     return value.replace(tzinfo=None) if value is not None else None
 
 
 def upsert_listing(db: Session, listing: NormalizedListing, run_id: str) -> int:
-    """Store one Listing and its Occurrences. Returns the Listing's id."""
     values = listing.model_dump(mode="json", include=set(_LISTING_COLUMNS))
     values |= {
         "source": listing.source,
@@ -414,8 +294,6 @@ def upsert_listing(db: Session, listing: NormalizedListing, run_id: str) -> int:
         index_elements=[Listing.source, Listing.source_ref],
         set_={
             **{column: statement.excluded[column] for column in _LISTING_COLUMNS},
-            # A position already resolved is not clobbered by a later run that
-            # has none for the same Listing.
             "lat": func.coalesce(Listing.lat, statement.excluded.lat),
             "lon": func.coalesce(Listing.lon, statement.excluded.lon),
             "geo_source": case(
@@ -427,8 +305,6 @@ def upsert_listing(db: Session, listing: NormalizedListing, run_id: str) -> int:
                 else_=statement.excluded.geo_precision,
             ),
             "last_seen_run": statement.excluded.last_seen_run,
-            # Seen again, so it is back - a Source that briefly dropped a
-            # happening and then listed it again must not stay retired.
             "disappeared_at": None,
             "updated_at": func.now(),
         },
@@ -473,12 +349,6 @@ def upsert_listing(db: Session, listing: NormalizedListing, run_id: str) -> int:
                 )
             )
 
-            # Whatever this run did not stamp is a date the Source no longer
-            # lists. Deleted rather than retired, unlike a Listing: a Listing
-            # that stops appearing may have been cancelled, which is worth
-            # keeping, but an Occurrence that vanished while its Listing stayed
-            # is simply a date that moved - and leaving it behind serves the
-            # happening on a day it is not on.
             db.execute(
                 delete(Occurrence).where(
                     Occurrence.listing_id == listing_id,
@@ -492,7 +362,6 @@ def upsert_listing(db: Session, listing: NormalizedListing, run_id: str) -> int:
 
 
 def quarantine(db: Session, rejected: Sequence[Rejected], run_id: str) -> int:
-    """Keep the records normalisation refused. Returns how many were kept."""
     if not rejected:
         return 0
     try:
@@ -517,25 +386,6 @@ def quarantine(db: Session, rejected: Sequence[Rejected], run_id: str) -> int:
 def listing_counts(
     db: Session, source: str, run_id: str, *, since: date, until: date
 ) -> tuple[int, int]:
-    """How many of a Source's live Listings show in the window, and how many of
-    those `run_id` did not see.
-
-    The window is the one the run asked the Source for, so between them these
-    two numbers describe the programme this run could have contradicted -
-    which is what makes a share of them mean anything.
-
-    Counting the Source's whole history instead would hold a past breach against
-    it for good: Listings left live by a refused retirement would sit in the
-    denominator with nothing able to clear them, and `retire_unseen` is the only
-    thing that clears one. Windowed, they stop being counted once their dates
-    pass, and the run that follows can retire them.
-
-    `ListingWriteError` rather than `EventsLoadError` despite being a read: this
-    is the first half of retiring, and a run that cannot count must fail rather
-    than carry on and retire blind.
-    """
-    # EXISTS rather than a join - a Listing with eight Occurrences is one
-    # Listing, and a join would count it eight times.
     shows_in_window = (
         select(Occurrence.listing_id)
         .where(
@@ -561,13 +411,6 @@ def listing_counts(
 
 
 def retire_unseen(db: Session, source: str, run_id: str) -> int:
-    """Retire this Source's Listings that `run_id` did not touch.
-
-    The caller must only reach here after a fetch that actually succeeded -
-    otherwise a transient outage retires the Source's whole catalogue - and only
-    when what it would retire is a plausible share of the Source, which is the
-    service's call to make from `listing_counts`.
-    """
     try:
         result = db.execute(
             update(Listing)
@@ -584,12 +427,6 @@ def retire_unseen(db: Session, source: str, run_id: str) -> int:
 
 
 def record_source_run(db: Session, stats: SourceRunStats) -> None:
-    """Store what one Source did in one run, replacing any earlier attempt.
-
-    This is the last write of a Source's transaction, so it is where that
-    transaction commits: a Source's Listings and the record of how it went land
-    together or not at all.
-    """
     values = stats.model_dump()
     statement = insert(SourceRun).values(**values)
     try:

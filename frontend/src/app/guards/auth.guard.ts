@@ -11,7 +11,6 @@ export const authGuard: CanActivateFn = async (route, state) => {
   const { data } = await supabaseService.getUser();
   if (!data.user) {
     router.navigate(['/error'], { queryParams: { returnUrl: state.url } });
-    //router.navigate(['/login'], { queryParams: { returnUrl: state.url } });
 
     return false;
   }

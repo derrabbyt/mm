@@ -5,7 +5,6 @@ import { catchError, debounceTime, distinctUntilChanged, of, switchMap, tap } fr
 import { PhotonPlace, PhotonService } from '../../services/photon/photon.service';
 import { Position } from '../../open-api/model/position';
 
-/** Long enough to keep us off the public Photon instance while someone types. */
 const DEBOUNCE_MS = 350;
 const MIN_QUERY_LENGTH = 3;
 
@@ -19,7 +18,6 @@ export class AddressSearch {
   private photon = inject(PhotonService);
 
   readonly placeholder = input('Search address or place');
-  /** Biases results towards this point - pass the map centre or the meetup area. */
   readonly near = input<Position | null>(null);
   readonly lang = input('en');
   readonly limit = input(5);
@@ -35,8 +33,6 @@ export class AddressSearch {
       debounceTime(DEBOUNCE_MS),
       distinctUntilChanged(),
       tap((query) => this.loading.set(query.trim().length >= MIN_QUERY_LENGTH)),
-      // switchMap so a slow response for an older query can never overwrite a
-      // newer one - the in-flight request is cancelled instead.
       switchMap((query) => {
         const trimmed = query.trim();
         if (trimmed.length < MIN_QUERY_LENGTH) {
@@ -62,7 +58,6 @@ export class AddressSearch {
     this.open.set(false);
   }
 
-  /** Deferred so a click on a result lands before the list is torn down. */
   closeSoon() {
     setTimeout(() => this.open.set(false), 150);
   }
